@@ -1,0 +1,87 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PDF Toolkit — Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
+    #drop { border: 2px dashed #aaa; padding: 2rem; text-align:center; }
+    button { padding: 0.6rem 1rem; margin: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>PDF Compressor, Converter & OCR — Demo</h1>
+  <div id="drop">Drop PDF here or <input id="file" type="file" accept="application/pdf" /></div>
+
+  <div style="margin-top:1rem;">
+    <label>Action: 
+      <select id="preset">
+        <option value="basic">Compress - Basic (smart)</option>
+        <option value="gs_ebook">Compress - Ghostscript (ebook)</option>
+        <option value="gs_screen">Compress - Ghostscript (screen)</option>
+        <option value="qpdf">Optimize - qpdf</option>
+        <option value="ocr">OCR - Searchable PDF</option>
+      </select>
+    </label>
+    <button id="go">Run</button>
+    <button id="toimgs">PDF → Images (ZIP)</button>
+  </div>
+
+  <div id="log" style="margin-top:1rem;"></div>
+
+<script>
+const fileInput = document.getElementById('file');
+let file = null;
+fileInput.addEventListener('change', e => { file = e.target.files[0]; log('Selected: ' + file.name); });
+
+document.getElementById('drop').addEventListener('dragover', e => { e.preventDefault(); });
+document.getElementById('drop').addEventListener('drop', e => {
+  e.preventDefault();
+  file = e.dataTransfer.files[0];
+  fileInput.files = e.dataTransfer.files;
+  log('Dropped: ' + file.name);
+});
+
+function log(msg) {
+  document.getElementById('log').innerText = msg;
+}
+
+async function uploadTo(endpoint) {
+  if (!file) { alert('Select a PDF first'); return; }
+  const form = new FormData();
+  form.append('file', file);
+  log('Uploading...');
+  const resp = await fetch(endpoint, { method: 'POST', body: form });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    log('Error: ' + resp.status + ' - ' + txt);
+    return;
+  }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const cd = resp.headers.get('content-disposition') || '';
+  const m = cd.match(/filename=?"?([^"]+)"?/);
+  let fname = m ? m[1] : 'output';
+  a.download = fname;
+  a.click();
+  URL.revokeObjectURL(url);
+  log('Done: downloaded ' + fname);
+}
+
+document.getElementById('go').addEventListener('click', async () => {
+  const p = document.getElementById('preset').value;
+  if (p === 'basic') return uploadTo('/compress/basic');
+  if (p === 'qpdf') return uploadTo('/optimize/qpdf');
+  if (p === 'gs_ebook') return uploadTo('/compress/gs?preset=ebook');
+  if (p === 'gs_screen') return uploadTo('/compress/gs?preset=screen');
+  if (p === 'ocr') return uploadTo('/ocr');
+});
+
+document.getElementById('toimgs').addEventListener('click', async () => {
+  return uploadTo('/pdf-to-images');
+});
+</script>
+</body>
+</html>
