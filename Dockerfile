@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install main dependencies
+# Install required system dependencies for PDF/image/office conversion and language fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -20,20 +20,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto-mono \
     fonts-noto-sans \
     fonts-noto-serif \
-    fonts-noto-color-emoji \
-    fonts-noto-extra \
-    fonts-noto-ui-core \
-    fonts-noto-ui-extra \
-    # Hindi/Devanagari
     fonts-deva \
-    # Arabic
-    fonts-arabic \
-    # Russian/Cyrillic
-    fonts-crosextra-carlito \
-    fonts-crosextra-caladea \
-    # French/European: (Noto covers most Latin)
-    # Chinese/Japanese/Korean
-    fonts-noto-cjk \
+    fonts-indic \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
