@@ -58,9 +58,7 @@ async def compress_basic(
     os.close(out_fd)
     try:
         doc = fitz.open(in_path)
-        # Map quality to scale/quality (custom logic)
         scale_map = {100: 1.0, 90: 0.9, 80: 0.8, 70: 0.7, 60: 0.65, 50: 0.6, 40: 0.55, 30: 0.5, 20: 0.45, 10: 0.4}
-        # Find nearest scale
         scale_keys = sorted(scale_map.keys())
         scale = scale_map[min(scale_keys, key=lambda x: abs(x-quality))]
         for pno in range(len(doc)):
@@ -217,5 +215,67 @@ async def pdf_to_images(
             return JSONResponse(content={"images": img_urls, "sizes": img_sizes})
     finally:
         pass
+
+# --- Images to PDF Advanced ---
+@app.post("/images-to-pdf")
+async def images_to_pdf(
+    files: list[UploadFile] = File(...),
+    quality: int = Query(80, ge=10, le=100), # For JPEG images, etc.
+    background_tasks: BackgroundTasks = None
+):
+    temp_files = []
+    for file in files:
+        suffix = os.path.splitext(file.filename)[1]
+        fd, path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        with open(path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+        temp_files.append(path)
+    images = []
+    for f in temp_files:
+        try:
+            img = Image.open(f)
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            # Optionally re-save with quality for JPEG/WEBP/AVIF etc.
+            if os.path.splitext(f)[1].lower() in [".jpg", ".jpeg", ".webp", ".avif"]:
+                img.save(f, quality=quality)
+            images.append(img)
+        except Exception:
+            pass
+    if not images:
+        raise HTTPException(status_code=400, detail="No valid images.")
+    out_pdf = tempfile.mkstemp(suffix=".pdf")[1]
+    images[0].save(out_pdf, save_all=True, append_images=images[1:])
+    for f in temp_files:
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+    if background_tasks:
+        background_tasks.add_task(cleanup_files, [out_pdf])
+    return FileResponse(out_pdf, filename="images.pdf", media_type="application/pdf")
+
+# --- Office to PDF Advanced ---
+@app.post("/office-to-pdf")
+async def office_to_pdf(
+    file: UploadFile = File(...),
+    background_tasks: BackgroundTasks = None
+):
+    suffix = os.path.splitext(file.filename)[1]
+    fd, in_path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    with open(in_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    out_dir = tempfile.mkdtemp()
+    cmd = ["soffice", "--headless", "--convert-to", "pdf", "--outdir", out_dir, in_path]
+    subprocess.run(cmd, check=True)
+    base = os.path.splitext(os.path.basename(in_path))[0]
+    out_pdf = os.path.join(out_dir, base + ".pdf")
+    if not os.path.exists(out_pdf):
+        raise HTTPException(status_code=500, detail="PDF not created.")
+    if background_tasks:
+        background_tasks.add_task(cleanup_files, [in_path, out_dir])
+    return FileResponse(out_pdf, filename="converted.pdf", media_type="application/pdf")
 
 # --- Old endpoints unchanged ---
