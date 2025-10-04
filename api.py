@@ -76,10 +76,11 @@ async def compress_basic(file: UploadFile = File(...), level: int = Query(2, ge=
                 new_h = int(pix.height * scale)
                 if new_w < 1 or new_h < 1:
                     continue
+                # Fix for PyMuPDF >=1.20: use resize instead of resample
                 try:
-                    pix = pix.resize(new_w, new_h)  # Updated for PyMuPDF >=1.20
+                    pix = pix.resize(new_w, new_h)
                 except AttributeError:
-                    raise HTTPException(status_code=500, detail="PyMuPDF version incompatible: use >=1.20.0")
+                    raise HTTPException(status_code=500, detail="PyMuPDF version is incompatible (use >=1.20.0).")
                 jpg_bytes = pix.tobytes("jpeg", quality=quality)
                 try:
                     for r in page.get_images(full=True):
@@ -167,7 +168,7 @@ async def pdf_to_images(file: UploadFile = File(...), dpi: int = Query(150, ge=7
     finally:
         pass
 
-# --- 5) OCR: produce searchable PDF using ocrmypdf (no options) ---
+# --- 5) OCR: produce searchable PDF using ocrmypdf (with file validation) ---
 @app.post("/ocr")
 async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
     """
