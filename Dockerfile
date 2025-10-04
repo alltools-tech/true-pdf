@@ -18,8 +18,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Copy requirements and install (IMPORTANT: Pillow must be compiled from source for AVIF/HEIF support)
 COPY requirements.txt .
+
+# Uninstall any pre-installed Pillow (wheel)
+RUN pip uninstall -y pillow || true
+
 RUN pip install --upgrade pip
+# Pillow must be built from source (no wheel) to enable AVIF/HEIF!
+RUN pip install --no-binary=:all: pillow
+
+# Now install other requirements (excluding Pillow so it doesn't override with wheel)
 RUN pip install -r requirements.txt
 
 COPY . /app
