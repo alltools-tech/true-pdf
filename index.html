@@ -1,86 +1,181 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>PDF Toolkit — Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; padding: 1rem; }
-    #drop { border: 2px dashed #aaa; padding: 2rem; text-align:center; }
-    button { padding: 0.6rem 1rem; margin: 0.5rem; }
+    body { background: #f8f9fa; }
+    .container { max-width: 700px; margin: 2rem auto; }
+    #drop { border: 2px dashed #aaa; padding: 2rem; text-align:center; background:#fff; border-radius:8px;}
+    .img-thumb { max-width: 100px; margin: 6px; }
+    .file-info { margin-top: 1rem; }
+    .output-options { margin-bottom: 1rem; }
+    .btn-group { margin-bottom: 1rem; }
   </style>
 </head>
 <body>
-  <h1>PDF Compressor, Converter & OCR — Demo</h1>
-  <div id="drop">Drop PDF here or <input id="file" type="file" accept="application/pdf" /></div>
-
-  <div style="margin-top:1rem;">
-    <label>Action: 
-      <select id="preset">
-        <option value="basic">Compress - Basic (smart)</option>
-        <option value="gs_ebook">Compress - Ghostscript (ebook)</option>
-        <option value="gs_screen">Compress - Ghostscript (screen)</option>
-        <option value="qpdf">Optimize - qpdf</option>
-        <option value="ocr">OCR - Searchable PDF</option>
-      </select>
-    </label>
-    <button id="go">Run</button>
-    <button id="toimgs">PDF → Images (ZIP)</button>
+<div class="container">
+  <h1 class="mt-3 mb-4">PDF Compressor, Converter & OCR — Demo</h1>
+  <div id="drop" class="mb-3">
+    <input id="file" type="file" accept="application/pdf" class="form-control" />
+    <div id="fileSize" class="file-info"></div>
   </div>
 
-  <div id="log" style="margin-top:1rem;"></div>
+  <div class="mb-3">
+    <label class="form-label">Select PDF Output:</label>
+    <select id="preset" class="form-select">
+      <option value="basic">Compress - Basic (smart)</option>
+      <option value="gs_ebook">Compress - Ghostscript (ebook)</option>
+      <option value="gs_screen">Compress - Ghostscript (screen)</option>
+      <option value="qpdf">Optimize - qpdf</option>
+      <option value="ocr">OCR - Searchable PDF</option>
+    </select>
+  </div>
+
+  <div class="btn-group mb-3" role="group">
+    <button id="go" class="btn btn-primary">For PDF</button>
+  </div>
+
+  <div class="output-options mb-3">
+    <label class="form-label">Image Output Format:</label>
+    <select id="imgfmt" class="form-select">
+      <option value="png">PNG</option>
+      <option value="jpg">JPG</option>
+      <option value="webp">WEBP</option>
+      <option value="avif">AVIF</option>
+      <option value="heic">HEIC</option>
+      <option value="heif">HEIF</option>
+      <option value="svg">SVG</option>
+      <option value="tiff">TIFF</option>
+      <option value="bmp">BMP</option>
+    </select>
+    <label class="form-label mt-2">Image Output Type:</label>
+    <select id="imgouttype" class="form-select">
+      <option value="images">Images (individual)</option>
+      <option value="zip">Images (ZIP)</option>
+    </select>
+    <button id="toimgs" class="btn btn-success mt-3">PDF → Images</button>
+  </div>
+
+  <div id="log" class="mb-3"></div>
+  <div id="downloadArea"></div>
+</div>
 
 <script>
 const fileInput = document.getElementById('file');
 let file = null;
-fileInput.addEventListener('change', e => { file = e.target.files[0]; log('Selected: ' + file.name); });
-
-document.getElementById('drop').addEventListener('dragover', e => { e.preventDefault(); });
-document.getElementById('drop').addEventListener('drop', e => {
-  e.preventDefault();
-  file = e.dataTransfer.files[0];
-  fileInput.files = e.dataTransfer.files;
-  log('Dropped: ' + file.name);
+fileInput.addEventListener('change', e => {
+  file = e.target.files[0];
+  log('Selected: ' + file.name);
+  showFileSize(file);
 });
+
+function showFileSize(f) {
+  if (!f) { document.getElementById('fileSize').innerText = ''; return; }
+  const kb = (f.size/1024).toFixed(2);
+  const mb = (f.size/1024/1024).toFixed(2);
+  document.getElementById('fileSize').innerText = `File size: ${kb} KB (${mb} MB)`;
+}
 
 function log(msg) {
   document.getElementById('log').innerText = msg;
 }
 
-async function uploadTo(endpoint) {
+async function uploadTo(endpoint, extraParams={}, isImages=false, isZip=false) {
   if (!file) { alert('Select a PDF first'); return; }
   const form = new FormData();
   form.append('file', file);
+  for (const key in extraParams) form.append(key, extraParams[key]);
   log('Uploading...');
-  const resp = await fetch(endpoint, { method: 'POST', body: form });
+  let url = endpoint;
+  if (endpoint.includes('?')) { url = endpoint; }
+  else if (Object.keys(extraParams).length) {
+    url += '?' + new URLSearchParams(extraParams).toString();
+  }
+  const resp = await fetch(url, { method: 'POST', body: form });
   if (!resp.ok) {
     const txt = await resp.text();
     log('Error: ' + resp.status + ' - ' + txt);
     return;
   }
-  const blob = await resp.blob();
+  if (isImages) {
+    // Expecting JSON list of image URLs
+    const result = await resp.json();
+    log('Converted images:');
+    showImageDownloads(result.images, result.sizes);
+  } else if (isZip) {
+    const blob = await resp.blob();
+    showCompressedSize(blob.size);
+    createDownloadLink(blob, "pages.zip", "Download ZIP");
+    log('Done: downloaded images ZIP');
+  } else {
+    const blob = await resp.blob();
+    const cd = resp.headers.get('content-disposition') || '';
+    const m = cd.match(/filename=?"?([^"]+)"?/);
+    let fname = m ? m[1] : 'output.pdf';
+    showCompressedSize(blob.size);
+    createDownloadLink(blob, fname, "Download PDF");
+    log('Done: downloaded ' + fname);
+  }
+}
+
+function showCompressedSize(sz) {
+  const kb = (sz/1024).toFixed(2);
+  const mb = (sz/1024/1024).toFixed(2);
+  document.getElementById('log').innerText += `\nOutput file size: ${kb} KB (${mb} MB)`;
+}
+
+function createDownloadLink(blob, fname, label) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  const cd = resp.headers.get('content-disposition') || '';
-  const m = cd.match(/filename=?"?([^"]+)"?/);
-  let fname = m ? m[1] : 'output';
   a.download = fname;
-  a.click();
-  URL.revokeObjectURL(url);
-  log('Done: downloaded ' + fname);
+  a.className = "btn btn-info mt-2";
+  a.innerText = label || "Download";
+  document.getElementById('downloadArea').innerHTML = '';
+  document.getElementById('downloadArea').appendChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 60000);
+}
+
+function showImageDownloads(imgs, sizes) {
+  const area = document.getElementById('downloadArea');
+  area.innerHTML = '';
+  imgs.forEach((url, idx) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `page_${idx+1}.${document.getElementById('imgfmt').value}`;
+    a.innerText = `Download page ${idx+1} (${(sizes[idx]/1024).toFixed(1)} KB)`;
+    a.className = "btn btn-outline-success m-1";
+    area.appendChild(a);
+    area.appendChild(document.createElement('br'));
+    const imgThumb = document.createElement('img');
+    imgThumb.src = url;
+    imgThumb.className = 'img-thumb';
+    area.appendChild(imgThumb);
+  });
 }
 
 document.getElementById('go').addEventListener('click', async () => {
   const p = document.getElementById('preset').value;
+  document.getElementById('downloadArea').innerHTML = '';
   if (p === 'basic') return uploadTo('/compress/basic');
   if (p === 'qpdf') return uploadTo('/optimize/qpdf');
-  if (p === 'gs_ebook') return uploadTo('/compress/gs?preset=ebook');
-  if (p === 'gs_screen') return uploadTo('/compress/gs?preset=screen');
+  if (p === 'gs_ebook') return uploadTo('/compress/gs', {preset: 'ebook'});
+  if (p === 'gs_screen') return uploadTo('/compress/gs', {preset: 'screen'});
   if (p === 'ocr') return uploadTo('/ocr');
 });
 
 document.getElementById('toimgs').addEventListener('click', async () => {
-  return uploadTo('/pdf-to-images');
+  const fmt = document.getElementById('imgfmt').value;
+  const outtype = document.getElementById('imgouttype').value;
+  document.getElementById('downloadArea').innerHTML = '';
+  if (outtype === "images") {
+    return uploadTo('/pdf-to-images', {fmt: fmt, outtype: "images"}, true, false);
+  } else {
+    // ZIP option
+    return uploadTo('/pdf-to-images', {fmt: fmt, outtype: "zip"}, false, true);
+  }
 });
 </script>
 </body>
