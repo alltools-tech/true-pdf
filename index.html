@@ -125,6 +125,37 @@
     </div>
   </div>
 
+  <!-- Images to PDF Section -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Choose Images (any format):</label>
+        <input type="file" id="imgFiles" multiple accept="image/*" class="form-control" />
+      </div>
+      <div class="mb-3">
+        <label class="slider-label">Compression Quality:
+          <span id="img2pdfSliderLabel" class="slider-value">80</span>
+        </label>
+        <input type="range" class="form-range" min="10" max="100" value="80" id="img2pdfQuality" />
+        <div class="form-text">
+          For JPEG/WEBP/AVIF images only. 10 = Smallest file, 100 = Best quality.
+        </div>
+      </div>
+      <button id="img2pdfBtn" class="btn btn-primary mt-2">Images to PDF</button>
+    </div>
+  </div>
+
+  <!-- Office to PDF Section -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <div class="mb-3">
+        <label class="form-label">Choose Office File (.docx, .pptx, .xlsx, etc.):</label>
+        <input type="file" id="officeFile" accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp" class="form-control" />
+      </div>
+      <button id="office2pdfBtn" class="btn btn-warning mt-2">Office to PDF</button>
+    </div>
+  </div>
+
   <div id="log" class="mb-3"></div>
   <div id="downloadArea"></div>
 </div>
@@ -141,6 +172,8 @@ const imgQuality = document.getElementById('imgQuality');
 const imgQualityLabel = document.getElementById('imgQualityLabel');
 const pdfTypeSelect = document.getElementById('pdfType');
 const pdfSliderGroup = document.getElementById('pdfSliderGroup');
+const img2pdfQuality = document.getElementById('img2pdfQuality');
+const img2pdfSliderLabel = document.getElementById('img2pdfSliderLabel');
 
 // --- Drag and Drop ---
 dropBox.addEventListener('dragover', function(e) {
@@ -173,6 +206,9 @@ pdfQuality.addEventListener('input', function() {
 });
 imgQuality.addEventListener('input', function() {
   imgQualityLabel.innerText = imgQuality.value;
+});
+img2pdfQuality.addEventListener('input', function() {
+  img2pdfSliderLabel.innerText = img2pdfQuality.value;
 });
 
 // --- Hide PDF compression slider for OCR ---
@@ -294,6 +330,46 @@ document.getElementById('goIMG').addEventListener('click', async () => {
     log('Done: downloaded images ZIP');
   }
 });
+
+// --- Images to PDF Button ---
+img2pdfQuality.addEventListener('input', function() {
+  img2pdfSliderLabel.innerText = img2pdfQuality.value;
+});
+document.getElementById('img2pdfBtn').onclick = async () => {
+  const files = document.getElementById('imgFiles').files;
+  if (!files.length) { alert('Select images'); return; }
+  downloadArea.innerHTML = '';
+  log('Uploading...');
+  const form = new FormData();
+  for (let i = 0; i < files.length; i++) { form.append('files', files[i]); }
+  form.append('quality', img2pdfQuality.value);
+  const resp = await fetch('/images-to-pdf?quality=' + img2pdfQuality.value, { method: 'POST', body: form });
+  if (!resp.ok) { log('Error: ' + resp.status + ' - ' + await resp.text()); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = "images.pdf"; a.innerText = "Download PDF";
+  downloadArea.innerHTML = ''; downloadArea.appendChild(a);
+  log('Done: downloaded images.pdf');
+};
+
+// --- Office to PDF Button ---
+document.getElementById('office2pdfBtn').onclick = async () => {
+  const file = document.getElementById('officeFile').files[0];
+  if (!file) { alert('Select office file'); return; }
+  downloadArea.innerHTML = '';
+  log('Uploading...');
+  const form = new FormData();
+  form.append('file', file);
+  const resp = await fetch('/office-to-pdf', { method: 'POST', body: form });
+  if (!resp.ok) { log('Error: ' + resp.status + ' - ' + await resp.text()); return; }
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = "converted.pdf"; a.innerText = "Download PDF";
+  downloadArea.innerHTML = ''; downloadArea.appendChild(a);
+  log('Done: downloaded converted.pdf');
+};
 </script>
 </body>
 </html>
