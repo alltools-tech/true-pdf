@@ -5,10 +5,11 @@ import zipfile
 import subprocess
 from typing import List
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from pathlib import Path
+import base64
 
 app = FastAPI(title="PDF Toolkit - Compressor, Converter & OCR")
 
@@ -76,7 +77,6 @@ async def compress_basic(file: UploadFile = File(...), level: int = Query(2, ge=
                 new_h = int(pix.height * scale)
                 if new_w < 1 or new_h < 1:
                     continue
-                # Fix for PyMuPDF >=1.20: use resize instead of resample
                 try:
                     pix = pix.resize(new_w, new_h)
                 except AttributeError:
@@ -142,7 +142,7 @@ async def optimize_qpdf(file: UploadFile = File(...), background_tasks: Backgrou
     except subprocess.CalledProcessError:
         raise HTTPException(status_code=500, detail="qpdf failed")
 
-# --- 4) PDF -> images (all pages) and return ZIP ---
+# --- 4) PDF -> images (all pages), returns images as base64 URLs (not ZIP) ---
 @app.post("/pdf-to-images")
 async def pdf_to_images(
     file: UploadFile = File(...),
@@ -153,10 +153,11 @@ async def pdf_to_images(
     in_path = save_upload_tmp(file)
     tmpdir = tempfile.mkdtemp()
     try:
-        images = convert_from_path(in_path, dpi=dpi, output_folder=tmpdir)
+        images = convert_from_path(in_path, dpi=dpi)
         if not images:
             raise HTTPException(status_code=500, detail="conversion failed")
-        out_files = []
+        img_urls = []
+        img_sizes = []
         for idx, img in enumerate(images, start=1):
             out_path = os.path.join(tmpdir, f"page_{idx}.{fmt}")
             fmt_lower = fmt.lower()
@@ -182,7 +183,6 @@ async def pdf_to_images(
                         raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
                 elif fmt_lower == "svg":
                     try:
-                        # SVG export via PyMuPDF (fitz)
                         doc = fitz.open(in_path)
                         page = doc[idx-1]
                         svg_data = page.get_svg_image()
@@ -194,13 +194,14 @@ async def pdf_to_images(
                     img.save(out_path, format="PNG")  # fallback
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Could not save image as {fmt}: {e}")
-            out_files.append(out_path)
-        zip_fd, zip_path = tempfile.mkstemp(suffix=".zip")
-        os.close(zip_fd)
-        make_zip_from_files(out_files, zip_path)
+            # Serve images as base64 URLs for frontend
+            with open(out_path, "rb") as fimg:
+                bdata = fimg.read()
+                img_urls.append("data:image/"+fmt_lower+";base64," + base64.b64encode(bdata).decode())
+                img_sizes.append(len(bdata))
         if background_tasks:
-            background_tasks.add_task(cleanup_files, [in_path, tmpdir, zip_path])
-        return FileResponse(zip_path, filename="pages.zip", media_type="application/zip")
+            background_tasks.add_task(cleanup_files, [in_path, tmpdir])
+        return JSONResponse(content={"images": img_urls, "sizes": img_sizes})
     finally:
         pass
 
