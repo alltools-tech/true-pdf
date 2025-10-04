@@ -210,8 +210,8 @@ async def pdf_to_images(
             os.close(zip_fd)
             make_zip_from_files(out_files, zip_path)
             file_size = os.path.getsize(zip_path)
-            response = FileResponse(zip_path, filename=file.filename.replace(/\.[^.]+$/,'') + '_images.zip', media_type="application/zip")
-            response.headers["X-Converted-Filename"] = file.filename.replace(/\.[^.]+$/,'') + '_images.zip'
+            response = FileResponse(zip_path, filename=file.filename.replace('.pdf','') + '_images.zip', media_type="application/zip")
+            response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_images.zip'
             response.headers["X-Converted-Filesize"] = str(file_size)
             if background_tasks:
                 background_tasks.add_task(cleanup_files, [in_path, tmpdir, zip_path])
@@ -225,26 +225,53 @@ async def pdf_to_images(
 
 @app.post("/images-to-pdf")
 async def images_to_pdf(
-    files: list[UploadFile] = File(...),
+    files: List[UploadFile] = File(...),
     quality: int = Query(80, ge=10, le=100),
     background_tasks: BackgroundTasks = None
 ):
     temp_files = []
+    images = []
     for file in files:
         suffix = os.path.splitext(file.filename)[1]
         fd, path = tempfile.mkstemp(suffix=suffix)
         os.close(fd)
         with open(path, "wb") as f:
             shutil.copyfileobj(file.file, f)
-        temp_files.append(path)
-    images = []
-    for f in temp_files:
+        temp_files.append((path, file.filename))
+
+    for fpath, fname in temp_files:
+        ext = os.path.splitext(fname)[1].lower()
         try:
-            img = Image.open(f)
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            if os.path.splitext(f)[1].lower() in [".jpg", ".jpeg", ".webp", ".avif"]:
-                img.save(f, quality=quality)
+            if ext in [".svg"]:
+                # Convert SVG to PNG via cairosvg (if available)
+                try:
+                    import cairosvg
+                    png_path = fpath + ".png"
+                    cairosvg.svg2png(url=fpath, write_to=png_path)
+                    img = Image.open(png_path).convert("RGB")
+                    os.remove(png_path)
+                except ImportError:
+                    raise HTTPException(status_code=500, detail="SVG support requires cairosvg installed.")
+            elif ext in [".bmp", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".avif"]:
+                img = Image.open(fpath)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+            elif ext in [".heic", ".heif"]:
+                try:
+                    import pillow_heif
+                    pillow_heif.register_heif_opener()
+                    img = Image.open(fpath)
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                except ImportError:
+                    raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
+            else:
+                img = Image.open(fpath)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+            # Re-save images for compression quality, if format supports
+            if ext in [".jpg", ".jpeg", ".webp", ".avif"]:
+                img.save(fpath, quality=quality)
             images.append(img)
         except Exception:
             pass
@@ -252,14 +279,16 @@ async def images_to_pdf(
         raise HTTPException(status_code=400, detail="No valid images.")
     out_pdf = tempfile.mkstemp(suffix=".pdf")[1]
     images[0].save(out_pdf, save_all=True, append_images=images[1:])
-    for f in temp_files:
+    for fpath, _ in temp_files:
         try:
-            os.remove(f)
+            os.remove(fpath)
         except Exception:
             pass
     file_size = os.path.getsize(out_pdf)
-    response = FileResponse(out_pdf, filename=files[0].filename.replace(/\.[^.]+$/,'') + "_images.pdf", media_type="application/pdf")
-    response.headers["X-Converted-Filename"] = files[0].filename.replace(/\.[^.]+$/,'') + "_images.pdf"
+    first_name = files[0].filename if files and files[0].filename else "images"
+    base_name = os.path.splitext(first_name)[0]
+    response = FileResponse(out_pdf, filename=base_name + "_images.pdf", media_type="application/pdf")
+    response.headers["X-Converted-Filename"] = base_name + "_images.pdf"
     response.headers["X-Converted-Filesize"] = str(file_size)
     if background_tasks:
         background_tasks.add_task(cleanup_files, [out_pdf])
