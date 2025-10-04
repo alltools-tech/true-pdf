@@ -14,6 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavif-dev \
     libheif-dev \
     libreoffice \
+    fonts-noto fonts-noto-cjk fonts-noto-mono fonts-noto-unhinted fonts-noto-color-emoji fonts-noto-extra fonts-noto-ui-core fonts-noto-ui-extra \
+    fonts-deva fonts-indic fonts-lohit-devanagari fonts-lohit-bengali fonts-lohit-gujarati fonts-lohit-kannada fonts-lohit-marathi fonts-lohit-odia fonts-lohit-tamil fonts-lohit-telugu \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
