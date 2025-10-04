@@ -2,6 +2,7 @@ FROM python:3.11-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install main dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -14,8 +15,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavif-dev \
     libheif-dev \
     libreoffice \
-    fonts-noto fonts-noto-cjk fonts-noto-mono fonts-noto-unhinted fonts-noto-color-emoji fonts-noto-extra fonts-noto-ui-core fonts-noto-ui-extra \
-    fonts-deva fonts-indic fonts-lohit-devanagari fonts-lohit-bengali fonts-lohit-gujarati fonts-lohit-kannada fonts-lohit-marathi fonts-lohit-odia fonts-lohit-tamil fonts-lohit-telugu \
+    fonts-noto \
+    fonts-noto-cjk \
+    fonts-noto-mono \
+    fonts-noto-sans \
+    fonts-noto-serif \
+    fonts-noto-color-emoji \
+    fonts-noto-extra \
+    fonts-noto-ui-core \
+    fonts-noto-ui-extra \
+    # Hindi/Devanagari
+    fonts-deva \
+    # Arabic
+    fonts-arabic \
+    # Russian/Cyrillic
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    # French/European: (Noto covers most Latin)
+    # Chinese/Japanese/Korean
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
