@@ -1,4 +1,3 @@
-# api.py
 import os
 import shutil
 import tempfile
@@ -10,7 +9,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from pathlib import Path
-import pytesseract
 
 app = FastAPI(title="PDF Toolkit - Compressor, Converter & OCR")
 
@@ -24,12 +22,10 @@ def save_upload_tmp(upload: UploadFile) -> str:
         shutil.copyfileobj(upload.file, f)
     return path
 
-
 def make_zip_from_files(file_paths: List[str], zip_path: str):
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
         for fp in file_paths:
             z.write(fp, arcname=os.path.basename(fp))
-
 
 def cleanup_files(paths: List[str]):
     for p in paths:
@@ -44,8 +40,11 @@ def cleanup_files(paths: List[str]):
 # Serve minimal frontend
 @app.get("/", response_class=HTMLResponse)
 def index():
-    html = Path("index.html").read_text(encoding="utf-8")
-    return HTMLResponse(content=html)
+    if Path("index.html").exists():
+        html = Path("index.html").read_text(encoding="utf-8")
+        return HTMLResponse(content=html)
+    else:
+        return HTMLResponse(content="<h1>PDF Toolkit API</h1>")
 
 # --- 1) PyMuPDF "smart" compress (non-destructive attempt) ---
 @app.post("/compress/basic")
@@ -53,14 +52,12 @@ async def compress_basic(file: UploadFile = File(...), level: int = Query(2, ge=
     in_path = save_upload_tmp(file)
     out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
     os.close(out_fd)
-
     try:
         doc = fitz.open(in_path)
         quality_map = {0: 90, 1: 80, 2: 65, 3: 50}
         scale_map = {0: 1.0, 1: 0.9, 2: 0.75, 3: 0.6}
         quality = quality_map.get(level, 65)
         scale = scale_map.get(level, 0.75)
-
         for pno in range(len(doc)):
             page = doc[pno]
             imglist = page.get_images(full=True)
@@ -79,7 +76,10 @@ async def compress_basic(file: UploadFile = File(...), level: int = Query(2, ge=
                 new_h = int(pix.height * scale)
                 if new_w < 1 or new_h < 1:
                     continue
-                pix = pix.resample(new_w, new_h)
+                try:
+                    pix = pix.resize(new_w, new_h)  # Updated for PyMuPDF >=1.20
+                except AttributeError:
+                    raise HTTPException(status_code=500, detail="PyMuPDF version incompatible: use >=1.20.0")
                 jpg_bytes = pix.tobytes("jpeg", quality=quality)
                 try:
                     for r in page.get_images(full=True):
@@ -90,7 +90,6 @@ async def compress_basic(file: UploadFile = File(...), level: int = Query(2, ge=
                 except Exception:
                     page.insert_image(page.rect, stream=jpg_bytes)
                 pix = None
-
         doc.save(out_path, garbage=4, deflate=True)
         doc.close()
         if background_tasks:
@@ -178,18 +177,21 @@ async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTask
     in_path = save_upload_tmp(file)
     out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
     os.close(out_fd)
-
     try:
-        # Call ocrmypdf CLI (robust, produces searchable PDF with original images preserved)
+        # Validate input file is a PDF and not empty/corrupted
+        if os.path.getsize(in_path) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        try:
+            fitz.open(in_path)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Uploaded file is not a valid PDF.")
         cmd = ["ocrmypdf", "--skip-text", in_path, out_path]
         try:
             subprocess.run(cmd, check=True)
         except FileNotFoundError:
-            # ocrmypdf not installed
             raise HTTPException(status_code=500, detail="ocrmypdf not installed on server. Install tesseract-ocr and ocrmypdf.")
         except subprocess.CalledProcessError as e:
             raise HTTPException(status_code=500, detail=f"ocrmypdf failed: {e}")
-
         if background_tasks:
             background_tasks.add_task(cleanup_files, [in_path, out_path])
         return FileResponse(out_path, filename="ocr_searchable.pdf", media_type="application/pdf")
