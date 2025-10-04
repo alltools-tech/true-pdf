@@ -144,20 +144,56 @@ async def optimize_qpdf(file: UploadFile = File(...), background_tasks: Backgrou
 
 # --- 4) PDF -> images (all pages) and return ZIP ---
 @app.post("/pdf-to-images")
-async def pdf_to_images(file: UploadFile = File(...), dpi: int = Query(150, ge=72, le=600), fmt: str = Query("png"), background_tasks: BackgroundTasks = None):
+async def pdf_to_images(
+    file: UploadFile = File(...),
+    dpi: int = Query(150, ge=72, le=600),
+    fmt: str = Query("png"),
+    background_tasks: BackgroundTasks = None
+):
     in_path = save_upload_tmp(file)
     tmpdir = tempfile.mkdtemp()
     try:
-        images = convert_from_path(in_path, dpi=dpi, fmt=fmt, output_folder=tmpdir)
+        images = convert_from_path(in_path, dpi=dpi, output_folder=tmpdir)
         if not images:
             raise HTTPException(status_code=500, detail="conversion failed")
         out_files = []
         for idx, img in enumerate(images, start=1):
             out_path = os.path.join(tmpdir, f"page_{idx}.{fmt}")
-            if fmt.lower() in ("jpg", "jpeg"):
-                img.save(out_path, format="JPEG", quality=85)
-            else:
-                img.save(out_path, format=fmt.upper())
+            fmt_lower = fmt.lower()
+            try:
+                if fmt_lower in ("jpg", "jpeg"):
+                    img.save(out_path, format="JPEG", quality=85)
+                elif fmt_lower == "png":
+                    img.save(out_path, format="PNG")
+                elif fmt_lower == "tiff":
+                    img.save(out_path, format="TIFF")
+                elif fmt_lower == "bmp":
+                    img.save(out_path, format="BMP")
+                elif fmt_lower == "webp":
+                    img.save(out_path, format="WEBP")
+                elif fmt_lower == "avif":
+                    img.save(out_path, format="AVIF")
+                elif fmt_lower in ("heic", "heif"):
+                    try:
+                        import pillow_heif
+                        pillow_heif.register_heif_opener()
+                        img.save(out_path, format="HEIF")
+                    except ImportError:
+                        raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
+                elif fmt_lower == "svg":
+                    try:
+                        # SVG export via PyMuPDF (fitz)
+                        doc = fitz.open(in_path)
+                        page = doc[idx-1]
+                        svg_data = page.get_svg_image()
+                        with open(out_path, "w", encoding="utf-8") as f:
+                            f.write(svg_data)
+                    except Exception:
+                        raise HTTPException(status_code=500, detail="SVG export failed (requires PyMuPDF).")
+                else:
+                    img.save(out_path, format="PNG")  # fallback
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Could not save image as {fmt}: {e}")
             out_files.append(out_path)
         zip_fd, zip_path = tempfile.mkstemp(suffix=".zip")
         os.close(zip_fd)
