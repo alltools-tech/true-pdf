@@ -3,13 +3,13 @@ import shutil
 import tempfile
 import zipfile
 import subprocess
+import base64
 from typing import List
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from pathlib import Path
-import base64
 
 app = FastAPI(title="PDF Toolkit - Compressor, Converter & OCR")
 
@@ -142,12 +142,13 @@ async def optimize_qpdf(file: UploadFile = File(...), background_tasks: Backgrou
     except subprocess.CalledProcessError:
         raise HTTPException(status_code=500, detail="qpdf failed")
 
-# --- 4) PDF -> images (all pages), returns images as base64 URLs (not ZIP) ---
+# --- 4) PDF -> images (all pages), returns images as base64 URLs (or ZIP file) ---
 @app.post("/pdf-to-images")
 async def pdf_to_images(
     file: UploadFile = File(...),
     dpi: int = Query(150, ge=72, le=600),
     fmt: str = Query("png"),
+    outtype: str = Query("images"),  # "images" or "zip"
     background_tasks: BackgroundTasks = None
 ):
     in_path = save_upload_tmp(file)
@@ -156,6 +157,7 @@ async def pdf_to_images(
         images = convert_from_path(in_path, dpi=dpi)
         if not images:
             raise HTTPException(status_code=500, detail="conversion failed")
+        out_files = []
         img_urls = []
         img_sizes = []
         for idx, img in enumerate(images, start=1):
@@ -194,14 +196,23 @@ async def pdf_to_images(
                     img.save(out_path, format="PNG")  # fallback
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Could not save image as {fmt}: {e}")
-            # Serve images as base64 URLs for frontend
-            with open(out_path, "rb") as fimg:
-                bdata = fimg.read()
-                img_urls.append("data:image/"+fmt_lower+";base64," + base64.b64encode(bdata).decode())
-                img_sizes.append(len(bdata))
-        if background_tasks:
-            background_tasks.add_task(cleanup_files, [in_path, tmpdir])
-        return JSONResponse(content={"images": img_urls, "sizes": img_sizes})
+            out_files.append(out_path)
+            if outtype == "images":
+                with open(out_path, "rb") as fimg:
+                    bdata = fimg.read()
+                    img_urls.append(f"data:image/{fmt_lower};base64," + base64.b64encode(bdata).decode())
+                    img_sizes.append(len(bdata))
+        if outtype == "zip":
+            zip_fd, zip_path = tempfile.mkstemp(suffix=".zip")
+            os.close(zip_fd)
+            make_zip_from_files(out_files, zip_path)
+            if background_tasks:
+                background_tasks.add_task(cleanup_files, [in_path, tmpdir, zip_path])
+            return FileResponse(zip_path, filename="pages.zip", media_type="application/zip")
+        else:
+            if background_tasks:
+                background_tasks.add_task(cleanup_files, [in_path, tmpdir])
+            return JSONResponse(content={"images": img_urls, "sizes": img_sizes})
     finally:
         pass
 
