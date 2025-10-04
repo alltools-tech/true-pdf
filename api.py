@@ -14,7 +14,6 @@ from pathlib import Path
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
 
-# --- Helpers ---
 def save_upload_tmp(upload: UploadFile) -> str:
     suffix = Path(upload.filename).suffix or ".pdf"
     fd, path = tempfile.mkstemp(suffix=suffix)
@@ -46,7 +45,6 @@ def index():
     else:
         return HTMLResponse(content="<h1>PDF Toolkit API</h1>")
 
-# --- PDF Compress (Basic) ---
 @app.post("/compress/basic")
 async def compress_basic(
     file: UploadFile = File(...),
@@ -95,9 +93,13 @@ async def compress_basic(
                 pix = None
         doc.save(out_path, garbage=4, deflate=True)
         doc.close()
+        file_size = os.path.getsize(out_path)
+        response = FileResponse(out_path, filename=file.filename.replace('.pdf','') + '_compressed.pdf', media_type="application/pdf")
+        response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_compressed.pdf'
+        response.headers["X-Converted-Filesize"] = str(file_size)
         if background_tasks:
             background_tasks.add_task(cleanup_files, [in_path, out_path])
-        return FileResponse(out_path, filename="compressed_basic.pdf", media_type="application/pdf")
+        return response
     except Exception as e:
         try:
             os.remove(out_path)
@@ -105,7 +107,6 @@ async def compress_basic(
             pass
         raise HTTPException(status_code=500, detail=str(e))
 
-# --- OCR: produce searchable PDF using ocrmypdf ---
 @app.post("/ocr")
 async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
     in_path = save_upload_tmp(file)
@@ -125,19 +126,22 @@ async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTask
             raise HTTPException(status_code=500, detail="ocrmypdf not installed on server. Install tesseract-ocr and ocrmypdf.")
         except subprocess.CalledProcessError as e:
             raise HTTPException(status_code=500, detail=f"ocrmypdf failed: {e}")
+        file_size = os.path.getsize(out_path)
+        response = FileResponse(out_path, filename=file.filename.replace('.pdf','') + '_ocr.pdf', media_type="application/pdf")
+        response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_ocr.pdf'
+        response.headers["X-Converted-Filesize"] = str(file_size)
         if background_tasks:
             background_tasks.add_task(cleanup_files, [in_path, out_path])
-        return FileResponse(out_path, filename="ocr_searchable.pdf", media_type="application/pdf")
+        return response
     finally:
         pass
 
-# --- PDF/Image to Images / ZIP, with Compression Quality ---
 @app.post("/pdf-to-images")
 async def pdf_to_images(
     file: UploadFile = File(...),
     dpi: int = Query(150, ge=72, le=600),
     fmt: str = Query("png"),
-    outtype: str = Query("images"),  # "images" or "zip"
+    outtype: str = Query("images"),
     quality: int = Query(80, ge=10, le=100),
     background_tasks: BackgroundTasks = None
 ):
@@ -146,7 +150,6 @@ async def pdf_to_images(
     try:
         images = []
         suffix = Path(file.filename).suffix.lower()
-        # If PDF, use pdf2image; else, open as single image
         if suffix == ".pdf":
             images = convert_from_path(in_path, dpi=dpi)
         else:
@@ -193,7 +196,7 @@ async def pdf_to_images(
                     else:
                         raise HTTPException(status_code=500, detail="SVG export from image not supported.")
                 else:
-                    img.save(out_path, format="PNG")  # fallback
+                    img.save(out_path, format="PNG")
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Could not save image as {fmt}: {e}")
             out_files.append(out_path)
@@ -206,9 +209,13 @@ async def pdf_to_images(
             zip_fd, zip_path = tempfile.mkstemp(suffix=".zip")
             os.close(zip_fd)
             make_zip_from_files(out_files, zip_path)
+            file_size = os.path.getsize(zip_path)
+            response = FileResponse(zip_path, filename=file.filename.replace(/\.[^.]+$/,'') + '_images.zip', media_type="application/zip")
+            response.headers["X-Converted-Filename"] = file.filename.replace(/\.[^.]+$/,'') + '_images.zip'
+            response.headers["X-Converted-Filesize"] = str(file_size)
             if background_tasks:
                 background_tasks.add_task(cleanup_files, [in_path, tmpdir, zip_path])
-            return FileResponse(zip_path, filename="pages.zip", media_type="application/zip")
+            return response
         else:
             if background_tasks:
                 background_tasks.add_task(cleanup_files, [in_path, tmpdir])
@@ -216,11 +223,10 @@ async def pdf_to_images(
     finally:
         pass
 
-# --- Images to PDF Advanced ---
 @app.post("/images-to-pdf")
 async def images_to_pdf(
     files: list[UploadFile] = File(...),
-    quality: int = Query(80, ge=10, le=100), # For JPEG images, etc.
+    quality: int = Query(80, ge=10, le=100),
     background_tasks: BackgroundTasks = None
 ):
     temp_files = []
@@ -237,7 +243,6 @@ async def images_to_pdf(
             img = Image.open(f)
             if img.mode != "RGB":
                 img = img.convert("RGB")
-            # Optionally re-save with quality for JPEG/WEBP/AVIF etc.
             if os.path.splitext(f)[1].lower() in [".jpg", ".jpeg", ".webp", ".avif"]:
                 img.save(f, quality=quality)
             images.append(img)
@@ -252,11 +257,14 @@ async def images_to_pdf(
             os.remove(f)
         except Exception:
             pass
+    file_size = os.path.getsize(out_pdf)
+    response = FileResponse(out_pdf, filename=files[0].filename.replace(/\.[^.]+$/,'') + "_images.pdf", media_type="application/pdf")
+    response.headers["X-Converted-Filename"] = files[0].filename.replace(/\.[^.]+$/,'') + "_images.pdf"
+    response.headers["X-Converted-Filesize"] = str(file_size)
     if background_tasks:
         background_tasks.add_task(cleanup_files, [out_pdf])
-    return FileResponse(out_pdf, filename="images.pdf", media_type="application/pdf")
+    return response
 
-# --- Office to PDF Advanced ---
 @app.post("/office-to-pdf")
 async def office_to_pdf(
     file: UploadFile = File(...),
@@ -274,8 +282,10 @@ async def office_to_pdf(
     out_pdf = os.path.join(out_dir, base + ".pdf")
     if not os.path.exists(out_pdf):
         raise HTTPException(status_code=500, detail="PDF not created.")
+    file_size = os.path.getsize(out_pdf)
+    response = FileResponse(out_pdf, filename=f"{base}.pdf", media_type="application/pdf")
+    response.headers["X-Converted-Filename"] = f"{base}.pdf"
+    response.headers["X-Converted-Filesize"] = str(file_size)
     if background_tasks:
         background_tasks.add_task(cleanup_files, [in_path, out_dir])
-    return FileResponse(out_pdf, filename="converted.pdf", media_type="application/pdf")
-
-# --- Old endpoints unchanged ---
+    return response
