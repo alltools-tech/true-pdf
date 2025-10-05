@@ -2,6 +2,7 @@ FROM python:3.11-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install main conversion dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -14,18 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavif-dev \
     libheif-dev \
     libreoffice \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install fonts but don't fail if a font is missing!
+RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto \
     fonts-noto-cjk \
     fonts-noto-mono \
+    fonts-deva \
+    fonts-indic \
     fonts-noto-sans \
     fonts-noto-serif \
-    wget \
-    && rm -rf /var/lib/apt/lists/*
+    || true
 
-# Add Mangal.ttf font for Hindi support
-RUN mkdir -p /usr/share/fonts/truetype/mangal \
-    && wget -O /usr/share/fonts/truetype/mangal/Mangal.ttf https://github.com/alltools-tech/fonts/raw/main/Mangal.ttf \
-    && fc-cache -fv
+RUN rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
