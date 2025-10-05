@@ -3,8 +3,9 @@ uvicorn[standard]
 python-multipart
 PyMuPDF
 pdf2image
-pillow
+Pillow
 pillow-heif
 pytesseract
 ocrmypdf
 cairosvg
+PyPDF2
