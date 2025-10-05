@@ -16,11 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice \
     fonts-noto \
     fonts-noto-cjk \
-    fonts-noto-hinted \
-    fonts-lohit-devanagari \
-    fonts-freefont-ttf \
-    fonts-deva \
-    fonts-indic \
+    fonts-noto-mono \
+    fonts-noto-sans \
+    fonts-noto-serif \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
