@@ -5,14 +5,15 @@ import zipfile
 import subprocess
 import base64
 from typing import List
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from PIL import Image
+from PyPDF2 import PdfReader, PdfWriter
 from pathlib import Path
 
-app = FastAPI(title="PDF Toolkit - Compressor & Converter")
+app = FastAPI(title="PDF Tool — Advanced API")
 
 def save_upload_tmp(upload: UploadFile) -> str:
     suffix = Path(upload.filename).suffix or ".pdf"
@@ -43,7 +44,105 @@ def index():
         html = Path("index.html").read_text(encoding="utf-8")
         return HTMLResponse(content=html)
     else:
-        return HTMLResponse(content="<h1>PDF Toolkit API</h1>")
+        return HTMLResponse(content="<h1>PDF Tool API</h1>")
+
+# --- PDF Page Count ---
+@app.post("/pdf-page-count")
+async def pdf_page_count(file: UploadFile = File(...)):
+    path = save_upload_tmp(file)
+    try:
+        doc = fitz.open(path)
+        page_count = doc.page_count
+        doc.close()
+    except Exception:
+        os.remove(path)
+        raise HTTPException(status_code=400, detail="Invalid PDF")
+    os.remove(path)
+    return {"filename": file.filename, "page_count": page_count}
+
+# --- PDF Split ---
+@app.post("/pdf-split")
+async def pdf_split(
+    file: UploadFile = File(...),
+    from_page: int = Form(...),
+    to_page: int = Form(...)
+):
+    path = save_upload_tmp(file)
+    out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(out_fd)
+    try:
+        reader = PdfReader(path)
+        writer = PdfWriter()
+        n = len(reader.pages)
+        fp = max(1, from_page)
+        tp = min(to_page, n)
+        for i in range(fp-1, tp):
+            writer.add_page(reader.pages[i])
+        with open(out_path, "wb") as out_f:
+            writer.write(out_f)
+        return FileResponse(out_path, filename=f"{file.filename.replace('.pdf','')}_pages_{fp}-{tp}.pdf", media_type="application/pdf")
+    finally:
+        cleanup_files([path])
+
+# --- PDF Merge ---
+@app.post("/pdf-merge")
+async def pdf_merge(files: List[UploadFile] = File(...)):
+    temp_files = []
+    for file in files:
+        path = save_upload_tmp(file)
+        temp_files.append(path)
+    out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(out_fd)
+    try:
+        writer = PdfWriter()
+        for p in temp_files:
+            reader = PdfReader(p)
+            for page in reader.pages:
+                writer.add_page(page)
+        with open(out_path, "wb") as out_f:
+            writer.write(out_f)
+        return FileResponse(out_path, filename="merged.pdf", media_type="application/pdf")
+    finally:
+        cleanup_files(temp_files)
+
+# --- PDF Extract Text ---
+@app.post("/pdf-extract-text")
+async def pdf_extract_text(file: UploadFile = File(...)):
+    path = save_upload_tmp(file)
+    try:
+        doc = fitz.open(path)
+        all_text = ""
+        for page in doc:
+            all_text += page.get_text()
+        doc.close()
+    except Exception:
+        os.remove(path)
+        raise HTTPException(status_code=400, detail="Invalid PDF")
+    os.remove(path)
+    return JSONResponse({"filename": file.filename, "text": all_text})
+
+# --- PDF Set Password ---
+@app.post("/pdf-set-password")
+async def pdf_set_password(
+    file: UploadFile = File(...),
+    password: str = Form(...)
+):
+    path = save_upload_tmp(file)
+    out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
+    os.close(out_fd)
+    try:
+        reader = PdfReader(path)
+        writer = PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+        writer.encrypt(password)
+        with open(out_path, "wb") as out_f:
+            writer.write(out_f)
+        return FileResponse(out_path, filename=f"{file.filename.replace('.pdf','')}_protected.pdf", media_type="application/pdf")
+    finally:
+        cleanup_files([path])
+
+# --------------- OLD ENDPOINTS BELOW (unchanged) ----------------
 
 @app.post("/compress/basic")
 async def compress_basic(
@@ -68,7 +167,7 @@ async def compress_basic(
                 xref = img[0]
                 base = doc.extract_image(xref)
                 img_bytes = base["image"]
-                if len(img_bytes) < 30_000:
+                if len(img_bytes) < 30000:
                     continue
                 pix = fitz.Pixmap(doc, xref)
                 if pix.n >= 4:
@@ -243,7 +342,6 @@ async def images_to_pdf(
         ext = os.path.splitext(fname)[1].lower()
         try:
             if ext in [".svg"]:
-                # Convert SVG to PNG via cairosvg (if available)
                 try:
                     import cairosvg
                     png_path = fpath + ".png"
@@ -269,7 +367,6 @@ async def images_to_pdf(
                 img = Image.open(fpath)
                 if img.mode != "RGB":
                     img = img.convert("RGB")
-            # Re-save images for compression quality, if format supports
             if ext in [".jpg", ".jpeg", ".webp", ".avif"]:
                 img.save(fpath, quality=quality)
             images.append(img)
