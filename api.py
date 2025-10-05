@@ -9,13 +9,18 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundT
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from pathlib import Path
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
 
+# Supported extensions
+PDF_EXTS = {".pdf"}
+IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".avif", ".svg", ".tiff", ".heic", ".heif", ".webp"}
+OFFICE_EXTS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".ods", ".odp"}
+
 def save_upload_tmp(upload: UploadFile) -> str:
-    suffix = Path(upload.filename).suffix or ".pdf"
+    suffix = Path(upload.filename).suffix or ".bin"
     fd, path = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
     with open(path, "wb") as f:
@@ -146,15 +151,21 @@ async def pdf_to_images(
     background_tasks: BackgroundTasks = None
 ):
     in_path = save_upload_tmp(file)
+    suffix = Path(file.filename).suffix.lower()
     tmpdir = tempfile.mkdtemp()
     try:
         images = []
-        suffix = Path(file.filename).suffix.lower()
-        if suffix == ".pdf":
+        # PDF or image
+        if suffix in PDF_EXTS:
             images = convert_from_path(in_path, dpi=dpi)
+        elif suffix in IMG_EXTS or suffix == "":
+            try:
+                img = Image.open(in_path)
+                images = [img]
+            except UnidentifiedImageError:
+                raise HTTPException(status_code=400, detail="Unsupported image format.")
         else:
-            img = Image.open(in_path)
-            images = [img]
+            raise HTTPException(status_code=400, detail="File type not supported for PDF to images.")
         if not images:
             raise HTTPException(status_code=500, detail="conversion failed")
         out_files = []
@@ -175,7 +186,10 @@ async def pdf_to_images(
                 elif fmt_lower == "webp":
                     img.save(out_path, format="WEBP", quality=quality)
                 elif fmt_lower == "avif":
-                    img.save(out_path, format="AVIF", quality=quality)
+                    try:
+                        img.save(out_path, format="AVIF", quality=quality)
+                    except Exception:
+                        raise HTTPException(status_code=500, detail="AVIF support requires pillow-avif-plugin.")
                 elif fmt_lower in ("heic", "heif"):
                     try:
                         import pillow_heif
@@ -203,8 +217,8 @@ async def pdf_to_images(
             if outtype == "images":
                 with open(out_path, "rb") as fimg:
                     bdata = fimg.read()
-                    img_urls.append(f"data:image/{fmt_lower};base64," + base64.b64encode(bdata).decode())
-                    img_sizes.append(len(bdata))
+                img_urls.append(f"data:image/{fmt_lower};base64," + base64.b64encode(bdata).decode())
+                img_sizes.append(len(bdata))
         if outtype == "zip":
             zip_fd, zip_path = tempfile.mkstemp(suffix=".zip")
             os.close(zip_fd)
@@ -299,14 +313,19 @@ async def office_to_pdf(
     file: UploadFile = File(...),
     background_tasks: BackgroundTasks = None
 ):
-    suffix = os.path.splitext(file.filename)[1]
+    suffix = os.path.splitext(file.filename)[1].lower()
+    if suffix not in OFFICE_EXTS:
+        raise HTTPException(status_code=400, detail="Unsupported office file type.")
     fd, in_path = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
     with open(in_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
     out_dir = tempfile.mkdtemp()
     cmd = ["soffice", "--headless", "--convert-to", "pdf", "--outdir", out_dir, in_path]
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"LibreOffice conversion failed: {e}")
     base = os.path.splitext(os.path.basename(in_path))[0]
     out_pdf = os.path.join(out_dir, base + ".pdf")
     if not os.path.exists(out_pdf):
@@ -318,3 +337,8 @@ async def office_to_pdf(
     if background_tasks:
         background_tasks.add_task(cleanup_files, [in_path, out_dir])
     return response
+
+# Language support: ensure all text is read/written in utf-8
+# All output files are handled in utf-8 encoding where applicable (see SVG export above)
+
+# Note: For additional image formats (AVIF, HEIC, etc.), ensure pillow plugins are installed.
