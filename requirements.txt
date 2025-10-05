@@ -5,6 +5,7 @@ PyMuPDF
 pdf2image
 Pillow
 pillow-heif
+pillow-avif-plugin
 pytesseract
 ocrmypdf
 cairosvg
