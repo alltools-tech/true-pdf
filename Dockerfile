@@ -2,7 +2,6 @@ FROM python:3.11-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install conversion tools and fonts for international language support (Hindi, English, French, Russian, Chinese, Japanese, Arabic, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -27,7 +26,6 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# Pillow source install for AVIF/HEIC support, plus pip upgrades
 RUN pip uninstall -y pillow || true
 RUN pip install --upgrade pip
 RUN pip install --no-binary=:all: pillow
