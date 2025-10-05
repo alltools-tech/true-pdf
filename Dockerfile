@@ -1,8 +1,7 @@
-FROM python:3.11-slim
+FROM python:3.11-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required system dependencies for PDF/image/office conversion and language fonts
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -17,9 +16,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice \
     fonts-noto \
     fonts-noto-cjk \
-    fonts-noto-mono \
-    fonts-noto-sans \
-    fonts-noto-serif \
+    fonts-noto-hinted \
+    fonts-lohit-devanagari \
+    fonts-freefont-ttf \
     fonts-deva \
     fonts-indic \
     && rm -rf /var/lib/apt/lists/*
