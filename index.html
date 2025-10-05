@@ -62,11 +62,11 @@
   <div class="fancy-title">PDF Toolkit — Compressor & Converter</div>
   <!-- Stylish File Input with Drag & Drop -->
   <div id="drop" class="drop-box mb-3">
-    <label for="file">Choose PDF, Image or Office File<br>
-      <span class="support-list">(Supported: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP, DOCX, PPTX, XLSX...)</span>
+    <label for="file">Choose PDF or Image file<br>
+      <span class="support-list">(Supported: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP)</span>
       <span style="font-size:0.95em;color:#888;">(or drag & drop here)</span>
     </label>
-    <input id="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp,.avif,.svg,.tiff,.heic,.heif,.webp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp,image/*,application/vnd.openxmlformats-officedocument.*,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint" />
+    <input id="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp,.avif,.svg,.tiff,.heic,.heif,.webp,image/*" />
     <div id="fileInfo" class="file-info"></div>
   </div>
 
@@ -75,7 +75,7 @@
     <div class="card-body">
       <div class="mb-2">
         <label class="form-label">Convert to PDF:</label>
-        <span class="support-list">(Input: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP, DOCX, PPTX, XLSX...)</span>
+        <span class="support-list">(Supported: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP)</span>
         <select id="pdfType" class="form-select">
           <option value="basic">Compress PDF (Basic)</option>
           <option value="ocr">OCR - Make PDF Searchable</option>
@@ -86,9 +86,6 @@
           <span id="pdfQualityLabel" class="slider-value">80</span>
         </label>
         <input type="range" class="form-range" min="10" max="100" value="80" id="pdfQuality" />
-        <div class="form-text">
-          10 = Smallest file (low quality) — 100 = Largest file (best quality)
-        </div>
       </div>
       <div class="d-flex align-items-center mb-2">
         <button id="goPDF" class="btn btn-primary me-2">Convert to PDF</button>
@@ -123,9 +120,6 @@
           <span id="imgQualityLabel" class="slider-value">80</span>
         </label>
         <input type="range" class="form-range" min="10" max="100" value="80" id="imgQuality" />
-        <div class="form-text">
-          10 = Smallest file (low quality) — 100 = Largest file (best quality)
-        </div>
       </div>
       <div class="mb-2">
         <label class="form-label">Image Output Type:</label>
@@ -157,9 +151,6 @@
           <span id="img2pdfSliderLabel" class="slider-value">80</span>
         </label>
         <input type="range" class="form-range" min="10" max="100" value="80" id="img2pdfQuality" />
-        <div class="form-text">
-          For JPEG/WEBP/AVIF images only. 10 = Smallest file, 100 = Best quality.
-        </div>
       </div>
       <div class="d-flex align-items-center mb-2">
         <button id="img2pdfBtn" class="btn btn-primary me-2">Image to PDF</button>
@@ -305,7 +296,7 @@
 
   // Convert to PDF
   document.getElementById('goPDF').addEventListener('click', async () => {
-    if (!file) { alert('Select a PDF, Image or Office file first'); return; }
+    if (!file) { alert('Select a PDF or Image file first'); return; }
     showSpinner("pdfSpinner");
     document.getElementById('pdfDownloadArea').innerHTML = '';
     document.getElementById('pdfConvertedInfo').innerHTML = '';
