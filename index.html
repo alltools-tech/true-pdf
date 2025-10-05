@@ -53,24 +53,29 @@
     .export-group { margin-top:7px; }
     #downloadArea a { margin-bottom: 7px; }
     .converted-info { font-size:1.03em; margin-bottom:5px; }
+    .spinner-border { width: 1.1rem; height: 1.1rem; vertical-align: middle; margin-left: 7px; }
+    .support-list { font-size: 0.95em; color: #888; margin-bottom: 0.5em; }
   </style>
 </head>
 <body>
 <div class="container">
   <div class="fancy-title">PDF Toolkit — Compressor & Converter</div>
-
   <!-- Stylish File Input with Drag & Drop -->
   <div id="drop" class="drop-box mb-3">
-    <label for="file">Choose PDF or Image file<br><span style="font-size:0.95em;color:#888;">(or drag & drop here)</span></label>
-    <input id="file" type="file" accept=".pdf,image/*" />
+    <label for="file">Choose PDF, Image or Office File<br>
+      <span class="support-list">(Supported: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP, DOCX, PPTX, XLSX...)</span>
+      <span style="font-size:0.95em;color:#888;">(or drag & drop here)</span>
+    </label>
+    <input id="file" type="file" accept=".pdf,.jpg,.jpeg,.png,.bmp,.avif,.svg,.tiff,.heic,.heif,.webp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp,image/*,application/vnd.openxmlformats-officedocument.*,application/msword,application/vnd.ms-excel,application/vnd.ms-powerpoint" />
     <div id="fileInfo" class="file-info"></div>
   </div>
 
-  <!-- PDF to PDF Section -->
+  <!-- Convert to PDF Section -->
   <div class="card mb-4">
     <div class="card-body">
       <div class="mb-2">
-        <label class="form-label">PDF Output Type:</label>
+        <label class="form-label">Convert to PDF:</label>
+        <span class="support-list">(Input: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP, DOCX, PPTX, XLSX...)</span>
         <select id="pdfType" class="form-select">
           <option value="basic">Compress PDF (Basic)</option>
           <option value="ocr">OCR - Make PDF Searchable</option>
@@ -82,22 +87,24 @@
         </label>
         <input type="range" class="form-range" min="10" max="100" value="80" id="pdfQuality" />
         <div class="form-text">
-          10 = Smallest file (low quality) &mdash; 100 = Largest file (best quality)
+          10 = Smallest file (low quality) — 100 = Largest file (best quality)
         </div>
       </div>
       <div class="d-flex align-items-center mb-2">
-        <button id="goPDF" class="btn btn-primary me-2">Convert PDF</button>
+        <button id="goPDF" class="btn btn-primary me-2">Convert to PDF</button>
+        <span id="pdfSpinner"></span>
         <span id="pdfDownloadArea"></span>
       </div>
       <div id="pdfConvertedInfo" class="converted-info"></div>
     </div>
   </div>
 
-  <!-- PDF/Image to Images Section -->
+  <!-- Convert to Image Section -->
   <div class="card mb-4">
     <div class="card-body">
       <div class="mb-2">
-        <label class="form-label">Image Output Format:</label>
+        <label class="form-label">Convert to Image:</label>
+        <span class="support-list">(Input: PDF, JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP)</span>
         <select id="imgfmt" class="form-select">
           <option value="png">PNG</option>
           <option value="jpg">JPG</option>
@@ -117,7 +124,7 @@
         </label>
         <input type="range" class="form-range" min="10" max="100" value="80" id="imgQuality" />
         <div class="form-text">
-          10 = Smallest file (low quality) &mdash; 100 = Largest file (best quality)
+          10 = Smallest file (low quality) — 100 = Largest file (best quality)
         </div>
       </div>
       <div class="mb-2">
@@ -128,19 +135,21 @@
         </select>
       </div>
       <div class="d-flex align-items-center mb-2">
-        <button id="goIMG" class="btn btn-success me-2">Convert to Images</button>
+        <button id="goIMG" class="btn btn-success me-2">Convert to Image</button>
+        <span id="imgSpinner"></span>
         <span id="imgDownloadArea"></span>
       </div>
       <div id="imgConvertedInfo" class="converted-info"></div>
     </div>
   </div>
 
-  <!-- Images to PDF Section -->
+  <!-- Image to PDF Section -->
   <div class="card mb-4">
     <div class="card-body">
       <div class="mb-2">
-        <label class="form-label">Choose Images (any format):</label>
-        <input type="file" id="imgFiles" multiple accept="image/*" class="form-control" />
+        <label class="form-label">Image to PDF:</label>
+        <span class="support-list">(Input: JPG, PNG, BMP, AVIF, SVG, TIFF, HEIC, HEIF, WEBP)</span>
+        <input type="file" id="imgFiles" multiple accept=".jpg,.jpeg,.png,.bmp,.avif,.svg,.tiff,.heic,.heif,.webp,image/*" class="form-control" />
         <div id="imgFilesInfo" class="file-info"></div>
       </div>
       <div class="mb-3">
@@ -153,7 +162,8 @@
         </div>
       </div>
       <div class="d-flex align-items-center mb-2">
-        <button id="img2pdfBtn" class="btn btn-primary me-2">Images to PDF</button>
+        <button id="img2pdfBtn" class="btn btn-primary me-2">Image to PDF</button>
+        <span id="img2pdfSpinner"></span>
         <span id="img2pdfDownloadArea"></span>
       </div>
       <div id="img2pdfConvertedInfo" class="converted-info"></div>
@@ -164,240 +174,268 @@
   <div class="card mb-4">
     <div class="card-body">
       <div class="mb-2">
-        <label class="form-label">Choose Office File (.docx, .pptx, .xlsx, etc.):</label>
-        <input type="file" id="officeFile" accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp" class="form-control" />
+        <label class="form-label">Office to PDF:</label>
+        <span class="support-list">(Input: DOC, DOCX, PPT, PPTX, XLS, XLSX, ODT, ODS, ODP, etc.)</span>
+        <input type="file" id="officeFile" accept=".doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.ods,.odp,application/msword,application/vnd.openxmlformats-officedocument.*,application/vnd.ms-powerpoint,application/vnd.ms-excel" class="form-control" />
         <div id="officeFileInfo" class="file-info"></div>
       </div>
       <div class="d-flex align-items-center mb-2">
         <button id="office2pdfBtn" class="btn btn-warning me-2">Office to PDF</button>
+        <span id="officeSpinner"></span>
         <span id="officeDownloadArea"></span>
       </div>
       <div id="officeConvertedInfo" class="converted-info"></div>
     </div>
   </div>
 
-  <div id="log" class="mb-3"></div>
+  <!-- Download areas for converted files -->
   <div id="downloadArea"></div>
 </div>
 
 <script>
-let file = null;
-const fileInput = document.getElementById('file');
-const dropBox = document.getElementById('drop');
-const logDiv = document.getElementById('log');
-const pdfQuality = document.getElementById('pdfQuality');
-const pdfQualityLabel = document.getElementById('pdfQualityLabel');
-const imgQuality = document.getElementById('imgQuality');
-const imgQualityLabel = document.getElementById('imgQualityLabel');
-const pdfTypeSelect = document.getElementById('pdfType');
-const pdfSliderGroup = document.getElementById('pdfSliderGroup');
-const img2pdfQuality = document.getElementById('img2pdfQuality');
-const img2pdfSliderLabel = document.getElementById('img2pdfSliderLabel');
-
-function showFileDetails(f, elid) {
-  if (!f) { document.getElementById(elid).innerText = ''; return;}
-  const kb = (f.size/1024).toFixed(2);
-  document.getElementById(elid).innerText = `${f.name} (${kb} KB)`;
-}
-fileInput.addEventListener('change', function(e) {
-  file = e.target.files[0];
-  showFileDetails(file, 'fileInfo');
-  log('Selected: ' + file.name);
-});
-document.getElementById('imgFiles').addEventListener('change', function(e) {
-  const files = e.target.files;
-  let text = '';
-  for (let i=0;i<files.length;i++) {
-    text += `${files[i].name} (${(files[i].size/1024).toFixed(2)} KB)`;
-    if (i<files.length-1) text += ', ';
+  // Spinner helpers
+  function showSpinner(spinnerId) {
+    document.getElementById(spinnerId).innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
   }
-  document.getElementById('imgFilesInfo').innerText = text;
-});
-document.getElementById('officeFile').addEventListener('change', function(e) {
-  const f = e.target.files[0];
-  showFileDetails(f, 'officeFileInfo');
-});
+  function hideSpinner(spinnerId) {
+    document.getElementById(spinnerId).innerHTML = '';
+  }
 
-// --- Drag and Drop ---
-dropBox.addEventListener('dragover', function(e) {
-  e.preventDefault();
-  dropBox.classList.add('dragover');
-});
-dropBox.addEventListener('dragleave', function(e) {
-  dropBox.classList.remove('dragover');
-});
-dropBox.addEventListener('drop', function(e) {
-  e.preventDefault();
-  dropBox.classList.remove('dragover');
-  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-    file = e.dataTransfer.files[0];
+  // File details, input handlers remain unchanged
+  let file = null;
+  const fileInput = document.getElementById('file');
+  const dropBox = document.getElementById('drop');
+  const pdfQuality = document.getElementById('pdfQuality');
+  const pdfQualityLabel = document.getElementById('pdfQualityLabel');
+  const imgQuality = document.getElementById('imgQuality');
+  const imgQualityLabel = document.getElementById('imgQualityLabel');
+  const pdfTypeSelect = document.getElementById('pdfType');
+  const pdfSliderGroup = document.getElementById('pdfSliderGroup');
+  const img2pdfQuality = document.getElementById('img2pdfQuality');
+  const img2pdfSliderLabel = document.getElementById('img2pdfSliderLabel');
+
+  function showFileDetails(f, elid) {
+    if (!f) { document.getElementById(elid).innerText = ''; return;}
+    const kb = (f.size/1024).toFixed(2);
+    document.getElementById(elid).innerText = `${f.name} (${kb} KB)`;
+  }
+  fileInput.addEventListener('change', function(e) {
+    file = e.target.files[0];
     showFileDetails(file, 'fileInfo');
-    log('Selected: ' + file.name);
+  });
+  document.getElementById('imgFiles').addEventListener('change', function(e) {
+    const files = e.target.files;
+    let text = '';
+    for (let i=0;i<files.length;i++) {
+      text += `${files[i].name} (${(files[i].size/1024).toFixed(2)} KB)`;
+      if (i<files.length-1) text += ', ';
+    }
+    document.getElementById('imgFilesInfo').innerText = text;
+  });
+  document.getElementById('officeFile').addEventListener('change', function(e) {
+    const f = e.target.files[0];
+    showFileDetails(f, 'officeFileInfo');
+  });
+
+  // Drag and Drop logic unchanged
+  dropBox.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    dropBox.classList.add('dragover');
+  });
+  dropBox.addEventListener('dragleave', function(e) {
+    dropBox.classList.remove('dragover');
+  });
+  dropBox.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropBox.classList.remove('dragover');
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      file = e.dataTransfer.files[0];
+      showFileDetails(file, 'fileInfo');
+    }
+  });
+
+  // Sliders
+  pdfQuality.addEventListener('input', function() { pdfQualityLabel.innerText = pdfQuality.value; });
+  imgQuality.addEventListener('input', function() { imgQualityLabel.innerText = imgQuality.value; });
+  img2pdfQuality.addEventListener('input', function() { img2pdfSliderLabel.innerText = img2pdfQuality.value; });
+
+  // Hide PDF compression slider for OCR
+  pdfTypeSelect.addEventListener('change', function() {
+    if (pdfTypeSelect.value === 'ocr') pdfSliderGroup.style.display = 'none';
+    else pdfSliderGroup.style.display = '';
+  });
+
+  function showConvertedInfo(areaId, fname, size) {
+    document.getElementById(areaId).innerHTML =
+      `<span>Converted File: <b>${fname}</b> (${(size/1024).toFixed(2)} KB)</span>`;
   }
-});
-
-// --- Sliders ---
-pdfQuality.addEventListener('input', function() {
-  pdfQualityLabel.innerText = pdfQuality.value;
-});
-imgQuality.addEventListener('input', function() {
-  imgQualityLabel.innerText = imgQuality.value;
-});
-img2pdfQuality.addEventListener('input', function() {
-  img2pdfSliderLabel.innerText = img2pdfQuality.value;
-});
-
-// --- Hide PDF compression slider for OCR ---
-pdfTypeSelect.addEventListener('change', function() {
-  if (pdfTypeSelect.value === 'ocr') {
-    pdfSliderGroup.style.display = 'none';
-  } else {
-    pdfSliderGroup.style.display = '';
-  }
-});
-
-function log(msg) { logDiv.innerText = msg; }
-function showConvertedInfo(areaId, fname, size) {
-  document.getElementById(areaId).innerHTML =
-    `<span>Converted File: <b>${fname}</b> (${(size/1024).toFixed(2)} KB)</span>`;
-}
-function createDownloadLink(areaId, blob, fname, label) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = fname;
-  a.className = "btn btn-info mt-2";
-  a.innerText = label || "Download";
-  document.getElementById(areaId).innerHTML = ''; document.getElementById(areaId).appendChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url), 60000);
-}
-function showImageDownloads(imgs, sizes, areaId) {
-  const area = document.getElementById(areaId);
-  area.innerHTML = '';
-  imgs.forEach((url, idx) => {
+  function createDownloadLink(areaId, blob, fname, label) {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `page_${idx+1}.${document.getElementById('imgfmt').value}`;
-    a.innerText = `Download page ${idx+1} (${(sizes[idx]/1024).toFixed(1)} KB)`;
-    a.className = "btn btn-outline-success m-1";
-    area.appendChild(a);
-    area.appendChild(document.createElement('br'));
-    const imgThumb = document.createElement('img');
-    imgThumb.src = url;
-    imgThumb.className = 'img-thumb';
-    area.appendChild(imgThumb);
+    a.download = fname;
+    a.className = "btn btn-info mt-2";
+    a.innerText = label || "Download";
+    document.getElementById(areaId).innerHTML = '';
+    document.getElementById(areaId).appendChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }
+  function showImageDownloads(imgs, sizes, areaId) {
+    const area = document.getElementById(areaId);
+    area.innerHTML = '';
+    imgs.forEach((url, idx) => {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `page_${idx+1}.${document.getElementById('imgfmt').value}`;
+      a.innerText = `Download page ${idx+1} (${(sizes[idx]/1024).toFixed(1)} KB)`;
+      a.className = "btn btn-outline-success m-1";
+      area.appendChild(a);
+      area.appendChild(document.createElement('br'));
+      const imgThumb = document.createElement('img');
+      imgThumb.src = url;
+      imgThumb.className = 'img-thumb';
+      area.appendChild(imgThumb);
+    });
+  }
+
+  // Remove log display (no bottom text during processing anymore)
+  function log(msg) {
+    // do nothing
+  }
+
+  // Convert to PDF
+  document.getElementById('goPDF').addEventListener('click', async () => {
+    if (!file) { alert('Select a PDF, Image or Office file first'); return; }
+    showSpinner("pdfSpinner");
+    document.getElementById('pdfDownloadArea').innerHTML = '';
+    document.getElementById('pdfConvertedInfo').innerHTML = '';
+    const form = new FormData();
+    form.append('file', file);
+    let endpoint = '';
+    let params = {};
+    if (pdfTypeSelect.value === 'basic') {
+      endpoint = '/compress/basic';
+      params = { quality: pdfQuality.value };
+    } else if (pdfTypeSelect.value === 'ocr') {
+      endpoint = '/ocr';
+    }
+    let url = endpoint;
+    if (Object.keys(params).length) url += '?' + new URLSearchParams(params).toString();
+    try {
+      const resp = await fetch(url, { method: 'POST', body: form });
+      if (!resp.ok) {
+        hideSpinner("pdfSpinner");
+        alert('Error: ' + resp.status + ' - ' + await resp.text());
+        return;
+      }
+      const blob = await resp.blob();
+      let fname = file.name.replace(/\.[^.]+$/,"") + ".pdf";
+      const headerFilename = resp.headers.get('x-converted-filename');
+      if (headerFilename) fname = headerFilename;
+      showConvertedInfo("pdfConvertedInfo", fname, blob.size);
+      createDownloadLink("pdfDownloadArea", blob, fname, "Download PDF");
+      hideSpinner("pdfSpinner");
+    } catch(e) {
+      hideSpinner("pdfSpinner");
+      alert("Error: " + e.message);
+    }
   });
-}
 
-// --- PDF Convert Button ---
-document.getElementById('goPDF').addEventListener('click', async () => {
-  if (!file) { alert('Select a PDF first'); return; }
-  document.getElementById('pdfDownloadArea').innerHTML = '';
-  document.getElementById('pdfConvertedInfo').innerHTML = '';
-  log('Uploading...');
-  const form = new FormData();
-  form.append('file', file);
-  let endpoint = '';
-  let params = {};
-  if (pdfTypeSelect.value === 'basic') {
-    endpoint = '/compress/basic';
-    params = { quality: pdfQuality.value };
-  } else if (pdfTypeSelect.value === 'ocr') {
-    endpoint = '/ocr';
-  }
-  let url = endpoint;
-  if (Object.keys(params).length) {
-    url += '?' + new URLSearchParams(params).toString();
-  }
-  const resp = await fetch(url, { method: 'POST', body: form });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    log('Error: ' + resp.status + ' - ' + txt);
-    return;
-  }
-  const blob = await resp.blob();
-  const cd = resp.headers.get('content-disposition') || '';
-  let fname = file.name.replace(/\.[^.]+$/,'') + ".pdf";
-  const headerFilename = resp.headers.get('x-converted-filename');
-  if (headerFilename) fname = headerFilename;
-  showConvertedInfo("pdfConvertedInfo", fname, blob.size);
-  createDownloadLink("pdfDownloadArea", blob, fname, "Download PDF");
-  log('Done: downloaded ' + fname);
-});
+  // Convert to Image
+  document.getElementById('goIMG').addEventListener('click', async () => {
+    if (!file) { alert('Select a PDF or Image first'); return; }
+    showSpinner("imgSpinner");
+    document.getElementById('imgDownloadArea').innerHTML = '';
+    document.getElementById('imgConvertedInfo').innerHTML = '';
+    const form = new FormData();
+    form.append('file', file);
+    const fmt = document.getElementById('imgfmt').value;
+    const outtype = document.getElementById('imgouttype').value;
+    const imgQualityVal = imgQuality.value;
+    let url = '/pdf-to-images?fmt=' + fmt + '&outtype=' + outtype + '&quality=' + imgQualityVal;
+    try {
+      const resp = await fetch(url, { method: 'POST', body: form });
+      if (!resp.ok) {
+        hideSpinner("imgSpinner");
+        alert('Error: ' + resp.status + ' - ' + await resp.text());
+        return;
+      }
+      if (outtype === "images") {
+        const result = await resp.json();
+        showConvertedInfo("imgConvertedInfo", file.name.replace(/\.[^.]+$/,'') + `_images.${fmt}`, result.sizes.reduce((a,b)=>a+b,0));
+        showImageDownloads(result.images, result.sizes, "imgDownloadArea");
+      } else {
+        const blob = await resp.blob();
+        let fname = file.name.replace(/\.[^.]+$/,'') + `_images.zip`;
+        showConvertedInfo("imgConvertedInfo", fname, blob.size);
+        createDownloadLink("imgDownloadArea", blob, fname, "Download ZIP");
+      }
+      hideSpinner("imgSpinner");
+    } catch(e) {
+      hideSpinner("imgSpinner");
+      alert("Error: " + e.message);
+    }
+  });
 
-// --- PDF/Image to Images Button ---
-document.getElementById('goIMG').addEventListener('click', async () => {
-  if (!file) { alert('Select a PDF or Image first'); return; }
-  document.getElementById('imgDownloadArea').innerHTML = '';
-  document.getElementById('imgConvertedInfo').innerHTML = '';
-  log('Uploading...');
-  const form = new FormData();
-  form.append('file', file);
-  const fmt = document.getElementById('imgfmt').value;
-  const outtype = document.getElementById('imgouttype').value;
-  const imgQualityVal = imgQuality.value;
-  let url = '/pdf-to-images?fmt=' + fmt + '&outtype=' + outtype + '&quality=' + imgQualityVal;
-  const resp = await fetch(url, { method: 'POST', body: form });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    log('Error: ' + resp.status + ' - ' + txt);
-    return;
-  }
-  if (outtype === "images") {
-    const result = await resp.json();
-    showConvertedInfo("imgConvertedInfo", file.name.replace(/\.[^.]+$/,'') + `_images.${fmt}`, result.sizes.reduce((a,b)=>a+b,0));
-    showImageDownloads(result.images, result.sizes, "imgDownloadArea");
-    log('Converted images.');
-  } else {
-    const blob = await resp.blob();
-    let fname = file.name.replace(/\.[^.]+$/,'') + `_images.zip`;
-    showConvertedInfo("imgConvertedInfo", fname, blob.size);
-    createDownloadLink("imgDownloadArea", blob, fname, "Download ZIP");
-    log('Done: downloaded images ZIP');
-  }
-});
+  // Image to PDF
+  document.getElementById('img2pdfQuality').addEventListener('input', function() {
+    img2pdfSliderLabel.innerText = img2pdfQuality.value;
+  });
+  document.getElementById('img2pdfBtn').onclick = async () => {
+    const files = document.getElementById('imgFiles').files;
+    if (!files.length) { alert('Select images'); return; }
+    showSpinner("img2pdfSpinner");
+    document.getElementById('img2pdfDownloadArea').innerHTML = '';
+    document.getElementById('img2pdfConvertedInfo').innerHTML = '';
+    const form = new FormData();
+    for (let i = 0; i < files.length; i++) { form.append('files', files[i]); }
+    form.append('quality', img2pdfQuality.value);
+    let fname = files[0].name.replace(/\.[^.]+$/,'') + "_images.pdf";
+    try {
+      const resp = await fetch('/images-to-pdf?quality=' + img2pdfQuality.value, { method: 'POST', body: form });
+      if (!resp.ok) {
+        hideSpinner("img2pdfSpinner");
+        alert('Error: ' + resp.status + ' - ' + await resp.text());
+        return;
+      }
+      const blob = await resp.blob();
+      showConvertedInfo("img2pdfConvertedInfo", fname, blob.size);
+      createDownloadLink("img2pdfDownloadArea", blob, fname, "Download PDF");
+      hideSpinner("img2pdfSpinner");
+    } catch(e) {
+      hideSpinner("img2pdfSpinner");
+      alert("Error: " + e.message);
+    }
+  };
 
-// --- Images to PDF Button ---
-img2pdfQuality.addEventListener('input', function() {
-  img2pdfSliderLabel.innerText = img2pdfQuality.value;
-});
-document.getElementById('img2pdfBtn').onclick = async () => {
-  const files = document.getElementById('imgFiles').files;
-  if (!files.length) { alert('Select images'); return; }
-  document.getElementById('img2pdfDownloadArea').innerHTML = '';
-  document.getElementById('img2pdfConvertedInfo').innerHTML = '';
-  log('Uploading...');
-  const form = new FormData();
-  for (let i = 0; i < files.length; i++) { form.append('files', files[i]); }
-  form.append('quality', img2pdfQuality.value);
-  let fname = files[0].name.replace(/\.[^.]+$/,'') + "_images.pdf";
-  const resp = await fetch('/images-to-pdf?quality=' + img2pdfQuality.value, { method: 'POST', body: form });
-  if (!resp.ok) { log('Error: ' + resp.status + ' - ' + await resp.text()); return; }
-  const blob = await resp.blob();
-  showConvertedInfo("img2pdfConvertedInfo", fname, blob.size);
-  createDownloadLink("img2pdfDownloadArea", blob, fname, "Download PDF");
-  log('Done: downloaded ' + fname);
-};
-
-// --- Office to PDF Button ---
-document.getElementById('office2pdfBtn').onclick = async () => {
-  const file = document.getElementById('officeFile').files[0];
-  if (!file) { alert('Select office file'); return; }
-  document.getElementById('officeDownloadArea').innerHTML = '';
-  document.getElementById('officeConvertedInfo').innerHTML = '';
-  log('Uploading...');
-  const form = new FormData();
-  form.append('file', file);
-  const resp = await fetch('/office-to-pdf', { method: 'POST', body: form });
-  if (!resp.ok) { log('Error: ' + resp.status + ' - ' + await resp.text()); return; }
-  const blob = await resp.blob();
-  const headerFilename = resp.headers.get('x-converted-filename');
-  const fname = headerFilename || file.name.replace(/\.[^.]+$/,'') + ".pdf";
-  const fsize = resp.headers.get('x-converted-filesize') || blob.size;
-  showConvertedInfo("officeConvertedInfo", fname, fsize);
-  createDownloadLink("officeDownloadArea", blob, fname, "Download PDF");
-  log('Done: downloaded ' + fname);
-};
+  // Office to PDF
+  document.getElementById('office2pdfBtn').onclick = async () => {
+    const file = document.getElementById('officeFile').files[0];
+    if (!file) { alert('Select office file'); return; }
+    showSpinner("officeSpinner");
+    document.getElementById('officeDownloadArea').innerHTML = '';
+    document.getElementById('officeConvertedInfo').innerHTML = '';
+    const form = new FormData();
+    form.append('file', file);
+    try {
+      const resp = await fetch('/office-to-pdf', { method: 'POST', body: form });
+      if (!resp.ok) {
+        hideSpinner("officeSpinner");
+        alert('Error: ' + resp.status + ' - ' + await resp.text());
+        return;
+      }
+      const blob = await resp.blob();
+      const headerFilename = resp.headers.get('x-converted-filename');
+      const fname = headerFilename || file.name.replace(/\.[^.]+$/,'') + ".pdf";
+      const fsize = resp.headers.get('x-converted-filesize') || blob.size;
+      showConvertedInfo("officeConvertedInfo", fname, fsize);
+      createDownloadLink("officeDownloadArea", blob, fname, "Download PDF");
+      hideSpinner("officeSpinner");
+    } catch(e) {
+      hideSpinner("officeSpinner");
+      alert("Error: " + e.message);
+    }
+  };
 </script>
 </body>
 </html>
