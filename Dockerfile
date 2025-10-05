@@ -2,6 +2,7 @@ FROM python:3.11-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install main conversion dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     poppler-utils \
     ghostscript \
@@ -14,12 +15,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libavif-dev \
     libheif-dev \
     libreoffice \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install fonts but don't fail if a font is missing!
+RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-noto \
     fonts-noto-cjk \
     fonts-noto-mono \
+    fonts-deva \
+    fonts-indic \
     fonts-noto-sans \
     fonts-noto-serif \
-    && rm -rf /var/lib/apt/lists/*
+    || true
+
+RUN rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
