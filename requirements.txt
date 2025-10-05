@@ -8,4 +8,4 @@ pillow-heif
 pytesseract
 ocrmypdf
 cairosvg
-PyPDF2 
+PyPDF2
