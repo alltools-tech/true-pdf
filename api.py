@@ -14,10 +14,8 @@ from pathlib import Path
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
 
-# Supported extensions
 PDF_EXTS = {".pdf"}
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".avif", ".svg", ".tiff", ".heic", ".heif", ".webp"}
-OFFICE_EXTS = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".ods", ".odp"}
 
 def save_upload_tmp(upload: UploadFile) -> str:
     suffix = Path(upload.filename).suffix or ".bin"
@@ -60,7 +58,32 @@ async def compress_basic(
     out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
     os.close(out_fd)
     try:
+        suffix = Path(file.filename).suffix.lower()
+        if suffix not in PDF_EXTS and suffix not in IMG_EXTS:
+            raise HTTPException(status_code=400, detail="Unsupported file type for PDF compression.")
+
+        # Handle images: convert directly to PDF if not a PDF
+        if suffix in IMG_EXTS:
+            try:
+                img = Image.open(in_path)
+                img.save(out_path, "PDF", resolution=100.0)
+                file_size = os.path.getsize(out_path)
+                response = FileResponse(out_path, filename=file.filename + '.pdf', media_type="application/pdf")
+                response.headers["X-Converted-Filename"] = file.filename + '.pdf'
+                response.headers["X-Converted-Filesize"] = str(file_size)
+                if background_tasks:
+                    background_tasks.add_task(cleanup_files, [in_path, out_path])
+                return response
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Image to PDF conversion failed: {e}")
+
+        # PDF compression
         doc = fitz.open(in_path)
+        # Set font fallback for Hindi/other Indic scripts (Noto fonts)
+        try:
+            doc.set_pdf_font_fallback("NotoSans-Regular", "NotoSansDevanagari-Regular", "NotoNaskhArabic-Regular")
+        except Exception:
+            pass
         scale_map = {100: 1.0, 90: 0.9, 80: 0.8, 70: 0.7, 60: 0.65, 50: 0.6, 40: 0.55, 30: 0.5, 20: 0.45, 10: 0.4}
         scale_keys = sorted(scale_map.keys())
         scale = scale_map[min(scale_keys, key=lambda x: abs(x-quality))]
@@ -110,7 +133,7 @@ async def compress_basic(
             os.remove(out_path)
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"PDF conversion error: {e}")
 
 @app.post("/ocr")
 async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTasks = None):
@@ -118,19 +141,22 @@ async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTask
     out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
     os.close(out_fd)
     try:
+        suffix = Path(file.filename).suffix.lower()
+        if suffix not in PDF_EXTS:
+            raise HTTPException(status_code=400, detail="Only PDF files supported for OCR.")
         if os.path.getsize(in_path) == 0:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
         try:
             fitz.open(in_path)
         except Exception:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid PDF.")
-        cmd = ["ocrmypdf", "--skip-text", in_path, out_path]
+        cmd = ["ocrmypdf", "--skip-text", "--output-type", "pdfa", "--pdf-renderer", "auto", in_path, out_path]
         try:
             subprocess.run(cmd, check=True)
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="ocrmypdf not installed on server. Install tesseract-ocr and ocrmypdf.")
         except subprocess.CalledProcessError as e:
-            raise HTTPException(status_code=500, detail=f"ocrmypdf failed: {e}")
+            raise HTTPException(status_code=500, detail=f"OCR PDF conversion failed: {e}")
         file_size = os.path.getsize(out_path)
         response = FileResponse(out_path, filename=file.filename.replace('.pdf','') + '_ocr.pdf', media_type="application/pdf")
         response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_ocr.pdf'
@@ -187,9 +213,10 @@ async def pdf_to_images(
                     img.save(out_path, format="WEBP", quality=quality)
                 elif fmt_lower == "avif":
                     try:
+                        from pillow_avif import AvifImagePlugin
                         img.save(out_path, format="AVIF", quality=quality)
-                    except Exception:
-                        raise HTTPException(status_code=500, detail="AVIF support requires pillow-avif-plugin.")
+                    except Exception as e:
+                        raise HTTPException(status_code=500, detail=f"AVIF not supported: {e}")
                 elif fmt_lower in ("heic", "heif"):
                     try:
                         import pillow_heif
@@ -257,7 +284,6 @@ async def images_to_pdf(
         ext = os.path.splitext(fname)[1].lower()
         try:
             if ext in [".svg"]:
-                # Convert SVG to PNG via cairosvg (if available)
                 try:
                     import cairosvg
                     png_path = fpath + ".png"
@@ -283,7 +309,6 @@ async def images_to_pdf(
                 img = Image.open(fpath)
                 if img.mode != "RGB":
                     img = img.convert("RGB")
-            # Re-save images for compression quality, if format supports
             if ext in [".jpg", ".jpeg", ".webp", ".avif"]:
                 img.save(fpath, quality=quality)
             images.append(img)
@@ -314,7 +339,8 @@ async def office_to_pdf(
     background_tasks: BackgroundTasks = None
 ):
     suffix = os.path.splitext(file.filename)[1].lower()
-    if suffix not in OFFICE_EXTS:
+    office_exts = {".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".odt", ".ods", ".odp"}
+    if suffix not in office_exts:
         raise HTTPException(status_code=400, detail="Unsupported office file type.")
     fd, in_path = tempfile.mkstemp(suffix=suffix)
     os.close(fd)
@@ -337,8 +363,3 @@ async def office_to_pdf(
     if background_tasks:
         background_tasks.add_task(cleanup_files, [in_path, out_dir])
     return response
-
-# Language support: ensure all text is read/written in utf-8
-# All output files are handled in utf-8 encoding where applicable (see SVG export above)
-
-# Note: For additional image formats (AVIF, HEIC, etc.), ensure pillow plugins are installed.
