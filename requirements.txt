@@ -10,3 +10,4 @@ pytesseract
 ocrmypdf
 cairosvg
 PyPDF2
+pillow_pavif_plugin
