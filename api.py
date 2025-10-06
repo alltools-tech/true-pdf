@@ -10,9 +10,20 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from PIL import Image, UnidentifiedImageError
-import pillow_heif  # Ensure HEIC/HEIF support
-import pillow_avif_plugin  # Ensure AVIF support
 from pathlib import Path
+
+try:
+    import pillow_avif_plugin
+    avif_supported = True
+except ImportError:
+    avif_supported = False
+
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    heif_supported = True
+except ImportError:
+    heif_supported = False
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
 
@@ -43,8 +54,6 @@ def cleanup_files(paths: List[str]):
             pass
 
 def check_pymupdf_version():
-    # PyMuPDF version check
-    import fitz
     try:
         version = tuple(map(int, fitz.__doc__.split()[1].split(".")))
         if version < (1, 20, 0):
@@ -161,14 +170,34 @@ async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTask
             fitz.open(in_path)
         except Exception:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid PDF.")
+
         cmd = ["ocrmypdf", "--skip-text", "--output-type", "pdfa", "--pdf-renderer", "auto", "-l", "hin+eng", in_path, out_path]
         try:
             subprocess.run(cmd, check=True)
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="ocrmypdf not installed on server. Install tesseract-ocr and ocrmypdf.")
         except subprocess.CalledProcessError as e:
+            # OCRmyPDF exit status 3 = PDF is already searchable or other issues
+            if e.returncode == 3:
+                error_points = [
+                    "This PDF is already searchable (contains text). OCR is not needed.",
+                    "You may get this error if your PDF already has selectable/searchable text.",
+                    "Some PDFs (like digitally created or converted) don't need OCR.",
+                    "If you want to force OCR or fix text extraction, try converting the PDF to images and then re-upload.",
+                    "If you scanned a document, use a non-searchable PDF for OCR.",
+                    "If you expect text recognition but see this message, check if your PDF truly has no text layer.",
+                    "For more details, see: https://ocrmypdf.readthedocs.io/en/latest/errors.html#exit-status-3-already-searchable"
+                ]
+                raise HTTPException(
+                    status_code=400,
+                    detail="\n".join(error_points)
+                )
+            # Other errors
             err_output = getattr(e, "output", None) or ""
-            raise HTTPException(status_code=500, detail=f"OCR PDF conversion failed. Check file type, resolution, and that Tesseract Hindi language pack is installed. Details: {err_output}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"OCR PDF conversion failed. Check file type, resolution, and that Tesseract Hindi language pack is installed. Details: {err_output}"
+            )
         file_size = os.path.getsize(out_path)
         response = FileResponse(out_path, filename=file.filename.replace('.pdf','') + '_ocr.pdf', media_type="application/pdf")
         response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_ocr.pdf'
@@ -223,15 +252,19 @@ async def pdf_to_images(
                 elif fmt_lower == "webp":
                     img.save(out_path, format="WEBP", quality=quality)
                 elif fmt_lower == "avif":
+                    if not avif_supported:
+                        raise HTTPException(status_code=500, detail="AVIF not supported: pillow-avif-plugin is not installed.")
                     try:
                         img.save(out_path, format="AVIF", quality=quality)
                     except Exception as e:
-                        raise HTTPException(status_code=500, detail=f"AVIF not supported: {e}. Make sure pillow-avif-plugin is imported and Pillow version >=9.0.0.")
+                        raise HTTPException(status_code=500, detail=f"AVIF save failed: {e}")
                 elif fmt_lower in ("heic", "heif"):
+                    if not heif_supported:
+                        raise HTTPException(status_code=500, detail="HEIF/HEIC not supported: pillow-heif is not installed.")
                     try:
                         img.save(out_path, format="HEIF", quality=quality)
                     except Exception as e:
-                        raise HTTPException(status_code=500, detail=f"HEIF/HEIC not supported: {e}. Make sure pillow-heif is imported and working.")
+                        raise HTTPException(status_code=500, detail=f"HEIF/HEIC save failed: {e}")
                 elif fmt_lower == "svg":
                     if suffix == ".pdf":
                         try:
@@ -305,12 +338,11 @@ async def images_to_pdf(
                 if img.mode != "RGB":
                     img = img.convert("RGB")
             elif ext in [".heic", ".heif"]:
-                try:
-                    img = Image.open(fpath)
-                    if img.mode != "RGB":
-                        img = img.convert("RGB")
-                except Exception as e:
+                if not heif_supported:
                     raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
+                img = Image.open(fpath)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
             else:
                 img = Image.open(fpath)
                 if img.mode != "RGB":
