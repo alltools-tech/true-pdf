@@ -10,21 +10,9 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from PIL import Image, UnidentifiedImageError
+import pillow_heif  # Ensure HEIC/HEIF support
+import pillow_avif_plugin  # Ensure AVIF support
 from pathlib import Path
-
-# Try importing AVIF and HEIC/HEIF plugins; handle gracefully if missing
-try:
-    import pillow_avif_plugin
-    avif_supported = True
-except ImportError:
-    avif_supported = False
-
-try:
-    import pillow_heif
-    pillow_heif.register_heif_opener()
-    heif_supported = True
-except ImportError:
-    heif_supported = False
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
 
@@ -55,6 +43,8 @@ def cleanup_files(paths: List[str]):
             pass
 
 def check_pymupdf_version():
+    # PyMuPDF version check
+    import fitz
     try:
         version = tuple(map(int, fitz.__doc__.split()[1].split(".")))
         if version < (1, 20, 0):
@@ -233,19 +223,15 @@ async def pdf_to_images(
                 elif fmt_lower == "webp":
                     img.save(out_path, format="WEBP", quality=quality)
                 elif fmt_lower == "avif":
-                    if not avif_supported:
-                        raise HTTPException(status_code=500, detail="AVIF not supported: pillow-avif-plugin is not installed.")
                     try:
                         img.save(out_path, format="AVIF", quality=quality)
                     except Exception as e:
-                        raise HTTPException(status_code=500, detail=f"AVIF save failed: {e}")
+                        raise HTTPException(status_code=500, detail=f"AVIF not supported: {e}. Make sure pillow-avif-plugin is imported and Pillow version >=9.0.0.")
                 elif fmt_lower in ("heic", "heif"):
-                    if not heif_supported:
-                        raise HTTPException(status_code=500, detail="HEIF/HEIC not supported: pillow-heif is not installed.")
                     try:
                         img.save(out_path, format="HEIF", quality=quality)
                     except Exception as e:
-                        raise HTTPException(status_code=500, detail=f"HEIF/HEIC save failed: {e}")
+                        raise HTTPException(status_code=500, detail=f"HEIF/HEIC not supported: {e}. Make sure pillow-heif is imported and working.")
                 elif fmt_lower == "svg":
                     if suffix == ".pdf":
                         try:
@@ -319,11 +305,12 @@ async def images_to_pdf(
                 if img.mode != "RGB":
                     img = img.convert("RGB")
             elif ext in [".heic", ".heif"]:
-                if not heif_supported:
+                try:
+                    img = Image.open(fpath)
+                    if img.mode != "RGB":
+                        img = img.convert("RGB")
+                except Exception as e:
                     raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
-                img = Image.open(fpath)
-                if img.mode != "RGB":
-                    img = img.convert("RGB")
             else:
                 img = Image.open(fpath)
                 if img.mode != "RGB":
