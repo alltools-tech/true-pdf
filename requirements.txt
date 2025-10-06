@@ -1,9 +1,9 @@
 fastapi
 uvicorn
 python-multipart
-PyMuPDF
+PyMuPDF>=1.20.0
 pdf2image
-Pillow
+Pillow>=9.0.0
 pillow-heif
 pillow-avif-plugin
 pytesseract
