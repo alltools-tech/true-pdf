@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import fitz  # PyMuPDF
 from pdf2image import convert_from_path
 from PIL import Image, UnidentifiedImageError
+import pillow_heif  # Ensure HEIC/HEIF support
+import pillow_avif_plugin  # Ensure AVIF support
 from pathlib import Path
 
 app = FastAPI(title="PDF Toolkit - Compressor & Converter")
@@ -40,6 +42,16 @@ def cleanup_files(paths: List[str]):
         except Exception:
             pass
 
+def check_pymupdf_version():
+    # PyMuPDF version check
+    import fitz
+    try:
+        version = tuple(map(int, fitz.__doc__.split()[1].split(".")))
+        if version < (1, 20, 0):
+            raise HTTPException(status_code=500, detail="PyMuPDF version is incompatible (use >=1.20.0).")
+    except Exception:
+        pass
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     if Path("index.html").exists():
@@ -54,6 +66,7 @@ async def compress_basic(
     quality: int = Query(80, ge=10, le=100),
     background_tasks: BackgroundTasks = None
 ):
+    check_pymupdf_version()
     in_path = save_upload_tmp(file)
     out_fd, out_path = tempfile.mkstemp(suffix=".pdf")
     os.close(out_fd)
@@ -77,9 +90,7 @@ async def compress_basic(
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Image to PDF conversion failed: {e}")
 
-        # PDF compression
         doc = fitz.open(in_path)
-        # Set font fallback for Hindi/other Indic scripts (Noto fonts)
         try:
             doc.set_pdf_font_fallback("NotoSans-Regular", "NotoSansDevanagari-Regular", "NotoNaskhArabic-Regular")
         except Exception:
@@ -150,13 +161,14 @@ async def ocr_pdf(file: UploadFile = File(...), background_tasks: BackgroundTask
             fitz.open(in_path)
         except Exception:
             raise HTTPException(status_code=400, detail="Uploaded file is not a valid PDF.")
-        cmd = ["ocrmypdf", "--skip-text", "--output-type", "pdfa", "--pdf-renderer", "auto", in_path, out_path]
+        cmd = ["ocrmypdf", "--skip-text", "--output-type", "pdfa", "--pdf-renderer", "auto", "-l", "hin+eng", in_path, out_path]
         try:
             subprocess.run(cmd, check=True)
         except FileNotFoundError:
             raise HTTPException(status_code=500, detail="ocrmypdf not installed on server. Install tesseract-ocr and ocrmypdf.")
         except subprocess.CalledProcessError as e:
-            raise HTTPException(status_code=500, detail=f"OCR PDF conversion failed: {e}")
+            err_output = getattr(e, "output", None) or ""
+            raise HTTPException(status_code=500, detail=f"OCR PDF conversion failed. Check file type, resolution, and that Tesseract Hindi language pack is installed. Details: {err_output}")
         file_size = os.path.getsize(out_path)
         response = FileResponse(out_path, filename=file.filename.replace('.pdf','') + '_ocr.pdf', media_type="application/pdf")
         response.headers["X-Converted-Filename"] = file.filename.replace('.pdf','') + '_ocr.pdf'
@@ -181,7 +193,6 @@ async def pdf_to_images(
     tmpdir = tempfile.mkdtemp()
     try:
         images = []
-        # PDF or image
         if suffix in PDF_EXTS:
             images = convert_from_path(in_path, dpi=dpi)
         elif suffix in IMG_EXTS or suffix == "":
@@ -213,17 +224,14 @@ async def pdf_to_images(
                     img.save(out_path, format="WEBP", quality=quality)
                 elif fmt_lower == "avif":
                     try:
-                        from pillow_avif import AvifImagePlugin
                         img.save(out_path, format="AVIF", quality=quality)
                     except Exception as e:
-                        raise HTTPException(status_code=500, detail=f"AVIF not supported: {e}")
+                        raise HTTPException(status_code=500, detail=f"AVIF not supported: {e}. Make sure pillow-avif-plugin is imported and Pillow version >=9.0.0.")
                 elif fmt_lower in ("heic", "heif"):
                     try:
-                        import pillow_heif
-                        pillow_heif.register_heif_opener()
                         img.save(out_path, format="HEIF", quality=quality)
-                    except ImportError:
-                        raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
+                    except Exception as e:
+                        raise HTTPException(status_code=500, detail=f"HEIF/HEIC not supported: {e}. Make sure pillow-heif is imported and working.")
                 elif fmt_lower == "svg":
                     if suffix == ".pdf":
                         try:
@@ -298,12 +306,10 @@ async def images_to_pdf(
                     img = img.convert("RGB")
             elif ext in [".heic", ".heif"]:
                 try:
-                    import pillow_heif
-                    pillow_heif.register_heif_opener()
                     img = Image.open(fpath)
                     if img.mode != "RGB":
                         img = img.convert("RGB")
-                except ImportError:
+                except Exception as e:
                     raise HTTPException(status_code=500, detail="HEIF/HEIC support requires pillow-heif installed.")
             else:
                 img = Image.open(fpath)
