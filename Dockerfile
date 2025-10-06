@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ghostscript \
     qpdf \
     tesseract-ocr \
+    tesseract-ocr-hin \
     libtesseract-dev \
     build-essential \
     libjpeg-dev \
@@ -29,6 +30,7 @@ COPY requirements.txt .
 RUN pip uninstall -y pillow || true
 RUN pip install --upgrade pip
 RUN pip install --no-binary=:all: pillow
+RUN pip install pillow-heif pillow-avif-plugin
 RUN pip install -r requirements.txt
 
 COPY . /app
